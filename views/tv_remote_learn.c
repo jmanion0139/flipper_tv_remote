@@ -38,6 +38,9 @@ typedef struct {
 static void tv_remote_learn_ir_rx_callback(void* context, InfraredWorkerSignal* received_signal) {
     TvRemoteApp* app = context;
 
+    /* Only capture one signal per learn step; ignore subsequent callbacks. */
+    if(app->learn_signal_received) return;
+
     /* Store the received signal into the current button's slot. */
     InfraredSignal* dst = app->buttons[app->learn_index].signal;
 
@@ -50,7 +53,11 @@ static void tv_remote_learn_ir_rx_callback(void* context, InfraredWorkerSignal* 
             dst, raw->timings, raw->timings_size, raw->frequency, raw->duty_cycle);
     }
 
-    /* Notify the main (UI) thread via custom event. */
+    /*
+     * Mark received before dispatching to ensure the UI-thread handler sees a
+     * stable signal.  The flag is reset in tv_remote_learn_start_rx so the next
+     * button's capture starts fresh.
+     */
     app->learn_signal_received = true;
     view_dispatcher_send_custom_event(
         app->view_dispatcher, TvRemoteCustomEventSignalReceived);
@@ -60,6 +67,7 @@ static void tv_remote_learn_ir_rx_callback(void* context, InfraredWorkerSignal* 
 
 static void tv_remote_learn_start_rx(TvRemoteApp* app) {
     if(app->worker_active) return;
+    app->learn_signal_received = false; /* reset for next capture */
     app->worker = infrared_worker_alloc();
     infrared_worker_rx_set_received_signal_callback(
         app->worker, tv_remote_learn_ir_rx_callback, app);
@@ -183,7 +191,7 @@ static void tv_remote_learn_draw_callback(Canvas* canvas, void* model_void) {
 
 static bool tv_remote_learn_input_callback(InputEvent* event, void* context) {
     TvRemoteApp* app = context;
-    if(event->type != InputTypeShort && event->type != InputTypeLong) return false;
+    if(event->type != InputTypeShort) return false;
 
     bool consumed = false;
     LearnState current_state = LearnStateWaiting;

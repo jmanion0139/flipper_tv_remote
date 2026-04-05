@@ -62,6 +62,16 @@ typedef struct {
 
 /* ---- IR worker TX callback ---- */
 
+/*
+ * TX callback – runs from the InfraredWorker thread.
+ *
+ * `app->tx_active` and `app->remote_selected` are written from the UI thread
+ * only via tv_remote_tx_start (before the worker starts) and tv_remote_tx_stop
+ * (after which the worker receives InfraredStatusDone and halts).  The boolean
+ * flag `tx_active` therefore acts as a release/acquire barrier: it is set to
+ * true before infrared_worker_tx_start and cleared before
+ * infrared_worker_tx_stop, making concurrent access safe on ARM Cortex-M.
+ */
 static InfraredStatus tv_remote_tx_callback(void* context, InfraredWorker* instance) {
     TvRemoteApp* app = context;
 
@@ -81,6 +91,7 @@ static InfraredStatus tv_remote_tx_callback(void* context, InfraredWorker* insta
 
 static void tv_remote_tx_start(TvRemoteApp* app, uint8_t button_index) {
     if(app->worker_active) return;
+    if(button_index >= TV_BUTTON_COUNT) return;
     if(!app->buttons[button_index].learned) return;
 
     app->remote_selected = button_index;

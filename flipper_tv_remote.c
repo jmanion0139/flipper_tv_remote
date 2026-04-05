@@ -61,7 +61,10 @@ bool tv_remote_app_save(TvRemoteApp* app) {
             break;
         }
     }
-    if(!any_learned) return true;
+    if(!any_learned) {
+        FURI_LOG_I(TV_REMOTE_APP_TAG, "No buttons learned – skipping save");
+        return true;
+    }
 
     Storage* storage = furi_record_open(RECORD_STORAGE);
     storage_simply_mkdir(storage, TV_REMOTE_FILE_DIR);
