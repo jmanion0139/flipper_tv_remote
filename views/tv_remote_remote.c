@@ -142,9 +142,17 @@ static void tv_remote_tx_stop(TvRemoteApp* app) {
 
 /* ---- Draw callback ---- */
 
-/** Return true when @p btn is the one currently being transmitted. */
-static inline bool is_active(const TvRemoteRemoteModel* m, uint8_t btn) {
-    return m->active_button == (int8_t)btn;
+/** Map hold actions back to their physical key for highlight purposes. */
+static inline bool is_dir_active(const TvRemoteRemoteModel* m, InputKey dir) {
+    int8_t b = m->active_button;
+    switch(dir) {
+    case InputKeyUp:    return b == (int8_t)TvButtonUp    || b == (int8_t)TvButtonVolUp;
+    case InputKeyDown:  return b == (int8_t)TvButtonDown  || b == (int8_t)TvButtonVolDn;
+    case InputKeyLeft:  return b == (int8_t)TvButtonLeft  || b == (int8_t)TvButtonChDn;
+    case InputKeyRight: return b == (int8_t)TvButtonRight || b == (int8_t)TvButtonChUp;
+    case InputKeyOk:    return b == (int8_t)TvButtonOk    || b == (int8_t)TvButtonHome;
+    default:            return false;
+    }
 }
 
 static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
@@ -160,37 +168,92 @@ static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
 
     canvas_set_font(canvas, FontSecondary);
 
-    // Arrows: canvas_draw_triangle(canvas, tip_x, tip_y, base, height, dir)
-    // The tip is the point; base/height are the triangle dimensions.
-    // CanvasDirection: BottomToTop = pointing up, TopToBottom = pointing down,
-    //                  RightToLeft = pointing left, LeftToRight = pointing right
-    const size_t ab = arrow_w * 2; // base
-    const size_t ah = arrow_len - 4; // height
+    // Arrow geometry
+    const size_t ab = (size_t)(arrow_w * 2); // triangle base
+    const size_t ah = (size_t)(arrow_len - 4); // triangle height
+    // Outline vertices relative to each tip:
+    //   Up:    tip (cx, cy-al), base corners (cx±aw, cy-al+ah)
+    //   Down:  tip (cx, cy+al), base corners (cx±aw, cy+al-ah)
+    //   Left:  tip (cx-al, cy), base corners (cx-al+ah, cy±aw)
+    //   Right: tip (cx+al, cy), base corners (cx+al-ah, cy±aw)
 
-    // Up arrow (tip points up, centred on cx, tip at cy-arrow_len)
-    canvas_draw_triangle(canvas, cx, cy - arrow_len, ab, ah, CanvasDirectionBottomToTop);
-    // Down arrow
-    canvas_draw_triangle(canvas, cx, cy + arrow_len, ab, ah, CanvasDirectionTopToBottom);
-    // Left arrow
-    canvas_draw_triangle(canvas, cx - arrow_len, cy, ab, ah, CanvasDirectionRightToLeft);
-    // Right arrow
-    canvas_draw_triangle(canvas, cx + arrow_len, cy, ab, ah, CanvasDirectionLeftToRight);
+#define DRAW_ARROW_OUTLINE_UP() do { \
+    canvas_draw_line(canvas, cx, cy - arrow_len, cx - arrow_w, cy - arrow_len + (int)ah); \
+    canvas_draw_line(canvas, cx, cy - arrow_len, cx + arrow_w, cy - arrow_len + (int)ah); \
+    canvas_draw_line(canvas, cx - arrow_w, cy - arrow_len + (int)ah, cx + arrow_w, cy - arrow_len + (int)ah); \
+} while(0)
+#define DRAW_ARROW_OUTLINE_DOWN() do { \
+    canvas_draw_line(canvas, cx, cy + arrow_len, cx - arrow_w, cy + arrow_len - (int)ah); \
+    canvas_draw_line(canvas, cx, cy + arrow_len, cx + arrow_w, cy + arrow_len - (int)ah); \
+    canvas_draw_line(canvas, cx - arrow_w, cy + arrow_len - (int)ah, cx + arrow_w, cy + arrow_len - (int)ah); \
+} while(0)
+#define DRAW_ARROW_OUTLINE_LEFT() do { \
+    canvas_draw_line(canvas, cx - arrow_len, cy, cx - arrow_len + (int)ah, cy - arrow_w); \
+    canvas_draw_line(canvas, cx - arrow_len, cy, cx - arrow_len + (int)ah, cy + arrow_w); \
+    canvas_draw_line(canvas, cx - arrow_len + (int)ah, cy - arrow_w, cx - arrow_len + (int)ah, cy + arrow_w); \
+} while(0)
+#define DRAW_ARROW_OUTLINE_RIGHT() do { \
+    canvas_draw_line(canvas, cx + arrow_len, cy, cx + arrow_len - (int)ah, cy - arrow_w); \
+    canvas_draw_line(canvas, cx + arrow_len, cy, cx + arrow_len - (int)ah, cy + arrow_w); \
+    canvas_draw_line(canvas, cx + arrow_len - (int)ah, cy - arrow_w, cx + arrow_len - (int)ah, cy + arrow_w); \
+} while(0)
 
-    // Ok button (center dot: filled when active, outline when idle)
-    bool ok_active = is_active(model, TvButtonOk);
-    if(ok_active) {
-        canvas_draw_disc(canvas, cx, cy, dot_r);
+    // Up
+    if(is_dir_active(model, InputKeyUp)) {
+        canvas_draw_triangle(canvas, cx, cy - arrow_len, ab, ah, CanvasDirectionBottomToTop);
     } else {
-        canvas_draw_circle(canvas, cx, cy, dot_r);
+        DRAW_ARROW_OUTLINE_UP();
+    }
+    // Down
+    if(is_dir_active(model, InputKeyDown)) {
+        canvas_draw_triangle(canvas, cx, cy + arrow_len, ab, ah, CanvasDirectionTopToBottom);
+    } else {
+        DRAW_ARROW_OUTLINE_DOWN();
+    }
+    // Left
+    if(is_dir_active(model, InputKeyLeft)) {
+        canvas_draw_triangle(canvas, cx - arrow_len, cy, ab, ah, CanvasDirectionRightToLeft);
+    } else {
+        DRAW_ARROW_OUTLINE_LEFT();
+    }
+    // Right
+    if(is_dir_active(model, InputKeyRight)) {
+        canvas_draw_triangle(canvas, cx + arrow_len, cy, ab, ah, CanvasDirectionLeftToRight);
+    } else {
+        DRAW_ARROW_OUTLINE_RIGHT();
     }
 
-    // Back (bottom left)
-    canvas_draw_str_aligned(canvas, 4, DISP_H - 14, AlignLeft, AlignTop, "Back");
-    // Power (bottom right)
-    canvas_draw_str_aligned(canvas, DISP_W - 4, DISP_H - 14, AlignRight, AlignTop, "Power");
+#undef DRAW_ARROW_OUTLINE_UP
+#undef DRAW_ARROW_OUTLINE_DOWN
+#undef DRAW_ARROW_OUTLINE_LEFT
+#undef DRAW_ARROW_OUTLINE_RIGHT
 
-    // Hold for alt (bottom center)
-    canvas_draw_str_aligned(canvas, DISP_W / 2, DISP_H - 6, AlignCenter, AlignTop, "Hold for alt");
+    // Ok (filled disc when active, outline circle when idle)
+    if(is_dir_active(model, InputKeyOk)) {
+        canvas_draw_disc(canvas, cx, cy, (size_t)dot_r);
+    } else {
+        canvas_draw_circle(canvas, cx, cy, (size_t)dot_r);
+    }
+
+    // ── Bottom bar (raised so nothing is cut off) ──
+    // icon_y=81: back icon + x2 label
+    // label_y=92: "Back" + "Power" text
+    // hint_y=105: "Hold for alt"
+    const int icon_y  = 81;
+    const int label_y = 92;
+    const int hint_y  = 105;
+
+    // Back icon: small left-pointing filled triangle above "Back"
+    canvas_draw_triangle(canvas, 5, icon_y + 3, 6, 5, CanvasDirectionRightToLeft);
+    // x2 above "Power"
+    canvas_draw_str_aligned(canvas, DISP_W - 4, icon_y, AlignRight, AlignTop, "x2");
+
+    // Labels
+    canvas_draw_str_aligned(canvas, 4, label_y, AlignLeft, AlignTop, "Back");
+    canvas_draw_str_aligned(canvas, DISP_W - 4, label_y, AlignRight, AlignTop, "Power");
+
+    // Hint
+    canvas_draw_str_aligned(canvas, DISP_W / 2, hint_y, AlignCenter, AlignTop, "Hold for alt");
 }
 
 /* ---- Helper: update model from app state ---- */
