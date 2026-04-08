@@ -147,119 +147,50 @@ static inline bool is_active(const TvRemoteRemoteModel* m, uint8_t btn) {
     return m->active_button == (int8_t)btn;
 }
 
-/** Draw a rounded-rect button cell; invert colours when active. */
-static void draw_btn(
-    Canvas* canvas,
-    const TvRemoteRemoteModel* model,
-    int x,
-    int y,
-    int w,
-    int h,
-    uint8_t btn,
-    const char* label) {
-    bool active = is_active(model, btn);
-    bool learned = model->learned[btn];
-
-    if(active) {
-        canvas_draw_rbox(canvas, x, y, w, h, 2);
-        canvas_set_color(canvas, ColorWhite);
-    } else {
-        canvas_draw_rframe(canvas, x, y, w, h, 2);
-    }
-
-    const char* text = learned ? label : "--";
-    canvas_draw_str_aligned(canvas, x + w / 2, y + h / 2 + 1, AlignCenter, AlignCenter, text);
-
-    if(active) {
-        canvas_set_color(canvas, ColorBlack);
-    }
-}
-
 static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
     TvRemoteRemoteModel* model = model_void;
     canvas_clear(canvas);
 
-    /* ── Title bar ── */
-    canvas_set_font(canvas, FontPrimary);
-    if(model->active_button >= 0) {
-        canvas_draw_str_aligned(canvas, DISP_W / 2, TITLE_Y, AlignCenter, AlignCenter, "SENDING");
-    } else {
-        canvas_draw_str_aligned(
-            canvas, DISP_W / 2, TITLE_Y, AlignCenter, AlignCenter, "TV Remote");
-    }
-    canvas_draw_line(canvas, 0, SEP1_Y, DISP_W - 1, SEP1_Y);
+    // Center of d-pad
+    const int cx = DISP_W / 2;
+    const int cy = DISP_H / 2 - 8;
+    const int arrow_len = 14;
+    const int arrow_w = 7;
+    const int dot_r = 4;
 
     canvas_set_font(canvas, FontSecondary);
 
-    /* ── Up button ── */
-    draw_btn(canvas, model, BOX_FULL_X, UP_Y, BOX_FULL_W, BOX_H, TvButtonUp, "Up");
-    canvas_draw_str_aligned(
-        canvas, DISP_W / 2, UP_Y + BOX_H + 5, AlignCenter, AlignCenter, "Vol. Up [HOLD]");
+    // Arrows: canvas_draw_triangle(canvas, tip_x, tip_y, base, height, dir)
+    // The tip is the point; base/height are the triangle dimensions.
+    // CanvasDirection: BottomToTop = pointing up, TopToBottom = pointing down,
+    //                  RightToLeft = pointing left, LeftToRight = pointing right
+    const size_t ab = arrow_w * 2; // base
+    const size_t ah = arrow_len - 4; // height
 
-    /* ── Middle row: Left / Ok / Right ── */
-    draw_btn(canvas, model, BOX_LEFT_X, MID_Y, BOX_SIDE_W, BOX_H, TvButtonLeft, "Left");
-    draw_btn(canvas, model, BOX_OK_X, MID_Y, BOX_MID_W, BOX_H, TvButtonOk, "Ok");
-    draw_btn(canvas, model, BOX_RIGHT_X, MID_Y, BOX_SIDE_W, BOX_H, TvButtonRight, "Right");
+    // Up arrow (tip points up, centred on cx, tip at cy-arrow_len)
+    canvas_draw_triangle(canvas, cx, cy - arrow_len, ab, ah, CanvasDirectionBottomToTop);
+    // Down arrow
+    canvas_draw_triangle(canvas, cx, cy + arrow_len, ab, ah, CanvasDirectionTopToBottom);
+    // Left arrow
+    canvas_draw_triangle(canvas, cx - arrow_len, cy, ab, ah, CanvasDirectionRightToLeft);
+    // Right arrow
+    canvas_draw_triangle(canvas, cx + arrow_len, cy, ab, ah, CanvasDirectionLeftToRight);
 
-    /* Hold labels under each middle button */
-    int hold_y = MID_Y + BOX_H + 4;
-    canvas_draw_str_aligned(
-        canvas, BOX_LEFT_X + BOX_SIDE_W / 2, hold_y, AlignCenter, AlignCenter, "Ch Dn");
-    canvas_draw_str_aligned(
-        canvas, BOX_LEFT_X + BOX_SIDE_W / 2, hold_y + 8, AlignCenter, AlignCenter, "[HOLD]");
-
-    canvas_draw_str_aligned(
-        canvas, BOX_OK_X + BOX_MID_W / 2, hold_y, AlignCenter, AlignCenter, "Home");
-    canvas_draw_str_aligned(
-        canvas, BOX_OK_X + BOX_MID_W / 2, hold_y + 8, AlignCenter, AlignCenter, "[HOLD]");
-
-    canvas_draw_str_aligned(
-        canvas, BOX_RIGHT_X + BOX_SIDE_W / 2, hold_y, AlignCenter, AlignCenter, "Ch Up");
-    canvas_draw_str_aligned(
-        canvas, BOX_RIGHT_X + BOX_SIDE_W / 2, hold_y + 8, AlignCenter, AlignCenter, "[HOLD]");
-
-    /* ── Down button ── */
-    draw_btn(canvas, model, BOX_FULL_X, DOWN_Y, BOX_FULL_W, BOX_H, TvButtonDown, "Down");
-    canvas_draw_str_aligned(
-        canvas, DISP_W / 2, DOWN_Y + BOX_H + 5, AlignCenter, AlignCenter, "Vol. Dn [HOLD]");
-
-    /* ── Separator ── */
-    canvas_draw_line(canvas, 0, SEP2_Y, DISP_W - 1, SEP2_Y);
-
-    /* ── Back button ── */
-    draw_btn(canvas, model, BACK_X, BACK_Y, BACK_W, BOX_H, TvButtonBack, "Back");
-    canvas_draw_str_aligned(
-        canvas, DISP_W / 2, BACK_Y + BOX_H + 5, AlignCenter, AlignCenter, "Hold: Exit");
-    canvas_draw_str_aligned(
-        canvas, DISP_W / 2, BACK_Y + BOX_H + 13, AlignCenter, AlignCenter, "2xTap: Power");
-
-    /* Show hold labels while a hold action is active */
-    if(model->active_button >= 0 && model->active_is_hold) {
-        /* Highlight the hold-action label by drawing the active hold-button box */
-        uint8_t hb = (uint8_t)model->active_button;
-        if(hb == TvButtonVolUp) {
-            draw_btn(
-                canvas, model, BOX_FULL_X, UP_Y, BOX_FULL_W, BOX_H, TvButtonVolUp, "Vol+");
-        } else if(hb == TvButtonVolDn) {
-            draw_btn(
-                canvas, model, BOX_FULL_X, DOWN_Y, BOX_FULL_W, BOX_H, TvButtonVolDn, "Vol-");
-        } else if(hb == TvButtonChDn) {
-            draw_btn(
-                canvas, model, BOX_LEFT_X, MID_Y, BOX_SIDE_W, BOX_H, TvButtonChDn, "ChDn");
-        } else if(hb == TvButtonChUp) {
-            draw_btn(
-                canvas,
-                model,
-                BOX_RIGHT_X,
-                MID_Y,
-                BOX_SIDE_W,
-                BOX_H,
-                TvButtonChUp,
-                "ChUp");
-        } else if(hb == TvButtonHome) {
-            draw_btn(canvas, model, BOX_OK_X, MID_Y, BOX_MID_W, BOX_H, TvButtonHome, "Home");
-        }
+    // Ok button (center dot: filled when active, outline when idle)
+    bool ok_active = is_active(model, TvButtonOk);
+    if(ok_active) {
+        canvas_draw_disc(canvas, cx, cy, dot_r);
+    } else {
+        canvas_draw_circle(canvas, cx, cy, dot_r);
     }
+
+    // Back (bottom left)
+    canvas_draw_str_aligned(canvas, 4, DISP_H - 14, AlignLeft, AlignTop, "Back");
+    // Power (bottom right)
+    canvas_draw_str_aligned(canvas, DISP_W - 4, DISP_H - 14, AlignRight, AlignTop, "Power");
+
+    // Hold for alt (bottom center)
+    canvas_draw_str_aligned(canvas, DISP_W / 2, DISP_H - 6, AlignCenter, AlignTop, "Hold for alt");
 }
 
 /* ---- Helper: update model from app state ---- */
