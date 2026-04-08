@@ -1,49 +1,88 @@
-# Flipper TV Remote
+# flipper_tv_remote
 
-A Flipper Zero external app (`.fap`) that uses the built-in IR transceiver to
-**record buttons from any TV remote** and then lets you use the Flipper as that
-TV remote.
+TV remote replacement Flipper Zero App — record buttons from any IR remote and replay them with your Flipper Zero.
 
 ## Features
 
-- **Learn mode** – sequentially records IR signals for 12 standard TV buttons:
-  Power, Mute, Volume Up/Down, Channel Up/Down, directional navigation (Up,
-  Down, Left, Right), OK and Back.
-- **Remote mode** – displays a 4 × 3 button grid on screen; navigate with the
-  d-pad, press **OK** to transmit the highlighted button's IR signal. Hold OK
-  to repeat (simulates holding a button on the original remote).
-- Learned signals are automatically saved to  
-  `SD Card/infrared/TV_Remote.ir` on exit and reloaded on the next launch.
-- Compatible with the standard Flipper `.ir` file format, so the saved file can
-  be used with other Flipper IR applications.
+- **Learn mode** — point your existing remote at the Flipper and record up to 12 buttons (Power, Mute, Vol+, Vol−, Ch+, Ch−, Up, Down, Left, Right, OK, Back)
+- **Remote mode** — navigate a 4×3 button grid with the d-pad and transmit the stored signal by pressing OK
+- Signals are saved automatically to `SD:/infrared/TV_Remote.ir` in the standard Flipper IR format, so they are compatible with the built-in Infrared app and other community apps
+
+## Building and Installing
+
+### Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| [Flipper Zero](https://flipperzero.one/) | With a microSD card inserted |
+| Python 3.8 or newer | Required by uFBT |
+| [uFBT](https://github.com/flipperdevices/flipperzero-ufbt) | Flipper build tool for external apps |
+| USB-C cable | For deploying the app directly from your computer |
+
+### 1 — Install uFBT
+
+```bash
+# Linux / macOS
+python3 -m pip install --upgrade ufbt
+
+# Windows
+py -m pip install --upgrade ufbt
+```
+
+On first run uFBT automatically downloads the Flipper SDK matching your device's firmware, so no separate firmware checkout is needed.
+
+### 2 — Clone this repository
+
+```bash
+git clone https://github.com/jmanion0139/flipper_tv_remote.git
+cd flipper_tv_remote
+```
+
+### 3 — Build the app
+
+```bash
+ufbt
+```
+
+This compiles the source and produces a `.fap` (Flipper App Package) file inside the `dist/` directory.
+
+### 4 — Deploy to your Flipper Zero
+
+**Option A — Deploy and launch automatically (recommended)**
+
+Connect your Flipper via USB, unlock it, and run:
+
+```bash
+ufbt launch
+```
+
+uFBT uploads the `.fap` to the device and starts the app immediately.
+
+**Option B — Copy the file manually**
+
+1. Copy `dist/flipper_tv_remote.fap` to the `apps/Infrared/` folder on your Flipper's microSD card.
+2. On the Flipper, go to **Applications → Infrared** and open **TV Remote**.
 
 ## Usage
 
-### 1. Learn your TV remote
+### Learning buttons
 
-1. Open the app and select **Learn Remote**.
-2. For each button the screen shows which button to teach (e.g. "Button 1/12: Power").
-3. Point your TV remote at the Flipper's IR receiver and press the corresponding
-   button.
-4. When the Flipper receives the signal it shows the decoded protocol / command
-   information.
-   - Press **OK** to save the signal and move to the next button.
-   - Press **Right** (→) to skip the current button without saving.
-   - Press **Left** (←) to discard the received signal and try again.
-5. Repeat for all 12 buttons (or skip any you don't need).
-6. Press **Left** at any time to stop learning and return to the menu.
+1. From the main menu select **Learn Remote**.
+2. For each of the 12 buttons, point your original remote at the Flipper's IR receiver (top of the device) and press the button.
+3. When the Flipper shows the decoded signal:
+   - **OK** — save and move to the next button
+   - **Right (→)** — skip this button
+   - **Left (←)** — discard the signal and try again
+4. Press **Back** at any time to stop learning and return to the menu. All buttons recorded so far are saved.
 
-### 2. Use the remote
+### Using as a remote
 
 1. From the main menu select **Use Remote**.
-2. A 4 × 3 grid of buttons is displayed.  Buttons that have not been learned
-   are shown as `--`.
-3. Navigate the cursor with the d-pad.
-4. Press and **hold** the **OK** button to transmit the highlighted signal.
-   Release to stop transmitting.
-5. Press **Back** to return to the main menu.
+2. Use the **d-pad** to highlight a button in the 4×3 grid.
+3. **Hold OK** to transmit the signal repeatedly. Buttons that have not been learned are shown as `--`.
+4. Press **Back** to return to the menu.
 
-## Button grid layout
+### Button layout
 
 ```
 [ PWR ] [ MUT ] [ V+  ] [ V-  ]
@@ -51,39 +90,31 @@ TV remote.
 [  ←  ] [  →  ] [ OK  ] [ BCK ]
 ```
 
-| Cell | IR button | Description |
-|------|-----------|-------------|
-| PWR  | Power     | Power on/off |
-| MUT  | Mute      | Mute / unmute |
-| V+   | Vol_up    | Volume up |
-| V-   | Vol_dn    | Volume down |
-| C+   | Ch_up     | Channel up |
-| C-   | Ch_dn     | Channel down |
-| ↑    | Up        | Navigation up |
-| ↓    | Down      | Navigation down |
-| ←    | Left      | Navigation left |
-| →    | Right     | Navigation right |
-| OK   | Ok        | Select / OK |
-| BCK  | Back      | Back / return |
+## Project structure
 
-## Building
-
-This app is built as a Flipper Zero external application (FAP).
-
-```bash
-# From inside the Flipper Zero firmware tree, with this repo as an external app:
-./fbt fap_flipper_tv_remote
-
-# Or build and launch on a connected Flipper:
-./fbt launch APPSRC=applications_user/flipper_tv_remote
+```
+flipper_tv_remote/
+├── application.fam          # App manifest (appid, name, category, …)
+├── flipper_tv_remote.c      # Entry point, lifecycle, file I/O
+├── flipper_tv_remote.h      # Shared data structures and constants
+└── views/
+    ├── tv_remote_learn.c    # IR receive/decode logic (learn mode)
+    ├── tv_remote_learn.h
+    ├── tv_remote_remote.c   # Button grid display and IR transmit (remote mode)
+    └── tv_remote_remote.h
 ```
 
-## File format
+Recorded signals are stored at `SD:/infrared/TV_Remote.ir` in the standard Flipper IR file format.
 
-Learned signals are stored in the standard Flipper IR file format at  
-`SD Card/infrared/TV_Remote.ir`.  You can edit or share this file with any
-other Flipper IR application.
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `ufbt launch` cannot find the device | Make sure the Flipper is connected via USB, unlocked, and not in any app that blocks the USB serial port |
+| App shows API version mismatch | Run `ufbt update` to download the SDK matching your current firmware, then rebuild with `ufbt` |
+| Buttons not recognized during learning | Keep the original remote close to the Flipper (< 30 cm) and ensure nothing is blocking the IR window on top of the device |
+| Learned signals are lost after restarting | Check that a microSD card is inserted; the app saves to `SD:/infrared/TV_Remote.ir` |
 
 ## License
 
-See [LICENSE](LICENSE).
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
