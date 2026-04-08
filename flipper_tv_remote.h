@@ -113,6 +113,9 @@ struct TvRemoteApp {
     /* TX state (for remote view button hold) */
     uint8_t remote_selected; /**< Button index highlighted in the remote view. */
     bool tx_active; /**< True while sending IR in remote view. */
+
+    /* Back-button double-tap detection */
+    uint32_t last_back_tick; /**< furi_get_tick() of last Back short press. */
 };
 
 /** Canonical button names (must match .ir file entries). */

@@ -16,6 +16,30 @@
 
 #include <gui/elements.h>
 
+/* ---- Learn sequence (skip Mute and Play/Pause) ---- */
+
+#define TV_LEARN_COUNT 12
+
+static const uint8_t learn_sequence[TV_LEARN_COUNT] = {
+    TvButtonPower,
+    TvButtonVolUp,
+    TvButtonVolDn,
+    TvButtonChUp,
+    TvButtonChDn,
+    TvButtonUp,
+    TvButtonDown,
+    TvButtonLeft,
+    TvButtonRight,
+    TvButtonOk,
+    TvButtonBack,
+    TvButtonHome,
+};
+
+/** Return the TvButton index for the current learn step. */
+static inline uint8_t learn_current_btn(const TvRemoteApp* app) {
+    return learn_sequence[app->learn_index];
+}
+
 /* ---- View model ---- */
 
 typedef enum {
@@ -26,7 +50,8 @@ typedef enum {
 
 typedef struct {
     LearnState state;
-    uint8_t button_index; /**< Button being learned (0-based). */
+    uint8_t learn_step;    /**< Step counter (0-based) for progress display. */
+    uint8_t button_index;  /**< Actual TvButton index for current step. */
     bool signal_is_parsed; /**< True when received signal was decoded. */
     /* Decoded signal info shown to the user. */
     char info_line1[32];
@@ -42,7 +67,7 @@ static void tv_remote_learn_ir_rx_callback(void* context, InfraredWorkerSignal* 
     if(app->learn_signal_received) return;
 
     /* Store the received signal into the current button's slot. */
-    TvRemoteIrSignal* dst = &app->buttons[app->learn_index].signal;
+    TvRemoteIrSignal* dst = &app->buttons[learn_current_btn(app)].signal;
 
     if(infrared_worker_signal_is_decoded(received_signal)) {
         const InfraredMessage* msg = infrared_worker_get_decoded_signal(received_signal);
@@ -108,9 +133,10 @@ static bool tv_remote_learn_custom_event_callback(void* context, uint32_t event)
         app->learn_view,
         TvRemoteLearnModel * model,
         {
-            TvRemoteIrSignal* sig = &app->buttons[app->learn_index].signal;
+            TvRemoteIrSignal* sig = &app->buttons[learn_current_btn(app)].signal;
             model->state = LearnStateReceived;
-            model->button_index = app->learn_index;
+            model->learn_step = app->learn_index;
+            model->button_index = learn_current_btn(app);
 
             if(sig->is_raw) {
                 model->signal_is_parsed = false;
@@ -169,8 +195,8 @@ static void tv_remote_learn_draw_callback(Canvas* canvas, void* model_void) {
             header,
             sizeof(header),
             "Button %u/%u: %s",
-            (unsigned)(model->button_index + 1),
-            (unsigned)TV_BUTTON_COUNT,
+            (unsigned)(model->learn_step + 1),
+            (unsigned)TV_LEARN_COUNT,
             btn_name);
         canvas_draw_str_aligned(canvas, 64, 14, AlignCenter, AlignTop, header);
         canvas_draw_str_aligned(
@@ -195,6 +221,31 @@ static void tv_remote_learn_draw_callback(Canvas* canvas, void* model_void) {
         elements_button_center(canvas, "Save");
         elements_button_right(canvas, "Skip");
         elements_button_left(canvas, "Retry");
+    }
+}
+
+/* ---- Helper: advance to next learn step and update UI ---- */
+
+static void learn_advance(TvRemoteApp* app) {
+    app->learn_index++;
+    if(app->learn_index >= TV_LEARN_COUNT) {
+        tv_remote_learn_stop_rx(app);
+        with_view_model(
+            app->learn_view,
+            TvRemoteLearnModel * model,
+            { model->state = LearnStateDone; },
+            true);
+    } else {
+        tv_remote_learn_start_rx(app);
+        with_view_model(
+            app->learn_view,
+            TvRemoteLearnModel * model,
+            {
+                model->state = LearnStateWaiting;
+                model->learn_step = app->learn_index;
+                model->button_index = learn_current_btn(app);
+            },
+            true);
     }
 }
 
@@ -226,24 +277,7 @@ static bool tv_remote_learn_input_callback(InputEvent* event, void* context) {
         if(event->key == InputKeyRight) {
             /* Skip this button */
             consumed = true;
-            app->learn_index++;
-            if(app->learn_index >= TV_BUTTON_COUNT) {
-                tv_remote_learn_stop_rx(app);
-                with_view_model(
-                    app->learn_view,
-                    TvRemoteLearnModel * model,
-                    { model->state = LearnStateDone; },
-                    true);
-            } else {
-                with_view_model(
-                    app->learn_view,
-                    TvRemoteLearnModel * model,
-                    {
-                        model->state = LearnStateWaiting;
-                        model->button_index = app->learn_index;
-                    },
-                    true);
-            }
+            learn_advance(app);
         } else if(event->key == InputKeyLeft || event->key == InputKeyBack) {
             /* Stop learning and go back */
             consumed = true;
@@ -255,53 +289,13 @@ static bool tv_remote_learn_input_callback(InputEvent* event, void* context) {
         if(event->key == InputKeyOk) {
             /* Save signal for this button */
             consumed = true;
-            app->buttons[app->learn_index].learned = true;
+            app->buttons[learn_current_btn(app)].learned = true;
             notification_message(app->notifications, &sequence_success);
-            app->learn_index++;
-
-            if(app->learn_index >= TV_BUTTON_COUNT) {
-                /* All buttons learned */
-                tv_remote_learn_stop_rx(app);
-                with_view_model(
-                    app->learn_view,
-                    TvRemoteLearnModel * model,
-                    { model->state = LearnStateDone; },
-                    true);
-            } else {
-                /* Continue to next button */
-                tv_remote_learn_start_rx(app);
-                with_view_model(
-                    app->learn_view,
-                    TvRemoteLearnModel * model,
-                    {
-                        model->state = LearnStateWaiting;
-                        model->button_index = app->learn_index;
-                    },
-                    true);
-            }
+            learn_advance(app);
         } else if(event->key == InputKeyRight) {
             /* Skip: discard signal, advance */
             consumed = true;
-            app->learn_index++;
-
-            if(app->learn_index >= TV_BUTTON_COUNT) {
-                tv_remote_learn_stop_rx(app);
-                with_view_model(
-                    app->learn_view,
-                    TvRemoteLearnModel * model,
-                    { model->state = LearnStateDone; },
-                    true);
-            } else {
-                tv_remote_learn_start_rx(app);
-                with_view_model(
-                    app->learn_view,
-                    TvRemoteLearnModel * model,
-                    {
-                        model->state = LearnStateWaiting;
-                        model->button_index = app->learn_index;
-                    },
-                    true);
-            }
+            learn_advance(app);
         } else if(event->key == InputKeyLeft) {
             /* Retry: restart RX for the same button */
             consumed = true;
@@ -321,7 +315,7 @@ static bool tv_remote_learn_input_callback(InputEvent* event, void* context) {
 
 static void tv_remote_learn_enter_callback(void* context) {
     TvRemoteApp* app = context;
-    /* Reset learning from the first button */
+    /* Reset learning from the first step */
     app->learn_index = 0;
     app->learn_signal_received = false;
 
@@ -330,7 +324,8 @@ static void tv_remote_learn_enter_callback(void* context) {
         TvRemoteLearnModel * model,
         {
             model->state = LearnStateWaiting;
-            model->button_index = 0;
+            model->learn_step = 0;
+            model->button_index = learn_sequence[0];
         },
         true);
 
@@ -363,7 +358,8 @@ View* tv_remote_learn_view_alloc(TvRemoteApp* app) {
         TvRemoteLearnModel * model,
         {
             model->state = LearnStateWaiting;
-            model->button_index = 0;
+            model->learn_step = 0;
+            model->button_index = learn_sequence[0];
             model->signal_is_parsed = false;
             model->info_line1[0] = '\0';
             model->info_line2[0] = '\0';
