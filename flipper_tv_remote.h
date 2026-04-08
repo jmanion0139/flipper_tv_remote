@@ -69,10 +69,20 @@ typedef enum {
 /** Opaque app context type. */
 typedef struct TvRemoteApp TvRemoteApp;
 
+/** Stored IR signal: either a decoded (parsed) message or raw timings. */
+typedef struct {
+    bool is_raw;
+    InfraredMessage message; /**< Valid when is_raw == false. */
+    uint32_t* timings;       /**< Heap-allocated raw timing array; NULL when unused. */
+    size_t timings_size;
+    uint32_t frequency;
+    float duty_cycle;
+} TvRemoteIrSignal;
+
 /** Per-button state: name, learned flag, and stored IR signal. */
 typedef struct {
     const char* name;  /**< Human-readable button name (stored in .ir file). */
-    InfraredSignal* signal; /**< Allocated signal; may be empty if not learned. */
+    TvRemoteIrSignal signal; /**< Stored IR signal data. */
     bool learned; /**< True when a signal has been successfully recorded. */
 } TvRemoteButton;
 

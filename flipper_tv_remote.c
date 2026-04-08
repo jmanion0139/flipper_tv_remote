@@ -79,9 +79,59 @@ bool tv_remote_app_save(TvRemoteApp* app) {
         success = true;
         for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
             if(!app->buttons[i].learned) continue;
-            if(!infrared_signal_save(app->buttons[i].signal, ff, tv_remote_button_names[i])) {
+            TvRemoteIrSignal* sig = &app->buttons[i].signal;
+
+            if(!flipper_format_write_comment_cstr(ff, "")) break;
+            if(!flipper_format_write_string_cstr(ff, "name", tv_remote_button_names[i])) {
                 success = false;
                 break;
+            }
+            if(sig->is_raw) {
+                if(!flipper_format_write_string_cstr(ff, "type", "raw")) {
+                    success = false;
+                    break;
+                }
+                if(!flipper_format_write_uint32(ff, "frequency", &sig->frequency, 1)) {
+                    success = false;
+                    break;
+                }
+                if(!flipper_format_write_float(ff, "duty_cycle", &sig->duty_cycle, 1)) {
+                    success = false;
+                    break;
+                }
+                if(!flipper_format_write_uint32(
+                       ff, "data", sig->timings, (uint16_t)sig->timings_size)) {
+                    success = false;
+                    break;
+                }
+            } else {
+                if(!flipper_format_write_string_cstr(ff, "type", "parsed")) {
+                    success = false;
+                    break;
+                }
+                if(!flipper_format_write_string_cstr(
+                       ff,
+                       "protocol",
+                       infrared_get_protocol_name(sig->message.protocol))) {
+                    success = false;
+                    break;
+                }
+                if(!flipper_format_write_hex(
+                       ff,
+                       "address",
+                       (const uint8_t*)&sig->message.address,
+                       4)) {
+                    success = false;
+                    break;
+                }
+                if(!flipper_format_write_hex(
+                       ff,
+                       "command",
+                       (const uint8_t*)&sig->message.command,
+                       4)) {
+                    success = false;
+                    break;
+                }
             }
         }
     } while(false);
@@ -95,7 +145,7 @@ bool tv_remote_app_load(TvRemoteApp* app) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     FlipperFormat* ff = flipper_format_buffered_file_alloc(storage);
     FuriString* name = furi_string_alloc();
-    InfraredSignal* tmp = infrared_signal_alloc();
+    FuriString* type_str = furi_string_alloc();
 
     bool success = false;
     do {
@@ -109,21 +159,85 @@ bool tv_remote_app_load(TvRemoteApp* app) {
         }
         furi_string_free(header);
 
-        /* Read signals until we can't load any more. */
-        while(infrared_signal_load_auto(tmp, ff, name)) {
+        /* Read signals until we can't read any more names. */
+        while(flipper_format_read_string(ff, "name", name)) {
+            if(!flipper_format_read_string(ff, "type", type_str)) break;
+
             const char* name_cstr = furi_string_get_cstr(name);
+            const char* type_cstr = furi_string_get_cstr(type_str);
+
+            /* Find matching button */
+            int btn_idx = -1;
             for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
                 if(strcmp(name_cstr, tv_remote_button_names[i]) == 0) {
-                    infrared_signal_set_signal(app->buttons[i].signal, tmp);
-                    app->buttons[i].learned = true;
+                    btn_idx = (int)i;
                     break;
                 }
+            }
+
+            if(strcmp(type_cstr, "raw") == 0) {
+                uint32_t frequency = 0;
+                float duty_cycle = 0;
+                if(!flipper_format_read_uint32(ff, "frequency", &frequency, 1)) break;
+                if(!flipper_format_read_float(ff, "duty_cycle", &duty_cycle, 1)) break;
+
+                uint32_t timings_count = 0;
+                if(!flipper_format_get_value_count(ff, "data", &timings_count)) break;
+                if(timings_count == 0) continue;
+
+                uint32_t* timings = malloc(sizeof(uint32_t) * timings_count);
+                if(!flipper_format_read_uint32(ff, "data", timings, (uint16_t)timings_count)) {
+                    free(timings);
+                    break;
+                }
+
+                if(btn_idx >= 0) {
+                    TvRemoteIrSignal* sig = &app->buttons[btn_idx].signal;
+                    if(sig->timings) free(sig->timings);
+                    sig->is_raw = true;
+                    sig->timings = timings;
+                    sig->timings_size = timings_count;
+                    sig->frequency = frequency;
+                    sig->duty_cycle = duty_cycle;
+                    app->buttons[btn_idx].learned = true;
+                } else {
+                    free(timings);
+                }
+            } else if(strcmp(type_cstr, "parsed") == 0) {
+                FuriString* protocol_str = furi_string_alloc();
+                if(!flipper_format_read_string(ff, "protocol", protocol_str)) {
+                    furi_string_free(protocol_str);
+                    break;
+                }
+
+                uint32_t address = 0;
+                uint32_t command = 0;
+                if(!flipper_format_read_hex(ff, "address", (uint8_t*)&address, 4)) {
+                    furi_string_free(protocol_str);
+                    break;
+                }
+                if(!flipper_format_read_hex(ff, "command", (uint8_t*)&command, 4)) {
+                    furi_string_free(protocol_str);
+                    break;
+                }
+
+                if(btn_idx >= 0) {
+                    TvRemoteIrSignal* sig = &app->buttons[btn_idx].signal;
+                    sig->is_raw = false;
+                    sig->message.protocol =
+                        infrared_get_protocol_by_name(furi_string_get_cstr(protocol_str));
+                    sig->message.address = address;
+                    sig->message.command = command;
+                    sig->message.repeat = false;
+                    app->buttons[btn_idx].learned = true;
+                }
+                furi_string_free(protocol_str);
             }
         }
         success = true;
     } while(false);
 
-    infrared_signal_free(tmp);
+    furi_string_free(type_str);
     furi_string_free(name);
     flipper_format_free(ff);
     furi_record_close(RECORD_STORAGE);
@@ -142,7 +256,7 @@ TvRemoteApp* tv_remote_app_alloc(void) {
     /* Initialise button storage */
     for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
         app->buttons[i].name = tv_remote_button_names[i];
-        app->buttons[i].signal = infrared_signal_alloc();
+        memset(&app->buttons[i].signal, 0, sizeof(TvRemoteIrSignal));
         app->buttons[i].learned = false;
     }
 
@@ -155,7 +269,6 @@ TvRemoteApp* tv_remote_app_alloc(void) {
 
     /* ViewDispatcher */
     app->view_dispatcher = view_dispatcher_alloc();
-    view_dispatcher_enable_queue(app->view_dispatcher);
     view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
 
     /* Main menu */
@@ -206,9 +319,11 @@ void tv_remote_app_free(TvRemoteApp* app) {
 
     view_dispatcher_free(app->view_dispatcher);
 
-    /* Free button signals */
+    /* Free button signal timings */
     for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
-        infrared_signal_free(app->buttons[i].signal);
+        if(app->buttons[i].signal.timings) {
+            free(app->buttons[i].signal.timings);
+        }
     }
 
     furi_record_close(RECORD_GUI);

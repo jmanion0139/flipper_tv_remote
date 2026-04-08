@@ -42,15 +42,23 @@ static void tv_remote_learn_ir_rx_callback(void* context, InfraredWorkerSignal* 
     if(app->learn_signal_received) return;
 
     /* Store the received signal into the current button's slot. */
-    InfraredSignal* dst = app->buttons[app->learn_index].signal;
+    TvRemoteIrSignal* dst = &app->buttons[app->learn_index].signal;
 
     if(infrared_worker_signal_is_decoded(received_signal)) {
-        const InfraredMessage* msg = infrared_worker_signal_get_decoded_signal(received_signal);
-        infrared_signal_set_message(dst, msg);
+        const InfraredMessage* msg = infrared_worker_get_decoded_signal(received_signal);
+        dst->is_raw = false;
+        dst->message = *msg;
     } else {
-        const InfraredRawSignal* raw = infrared_worker_signal_get_raw_signal(received_signal);
-        infrared_signal_set_raw_signal(
-            dst, raw->timings, raw->timings_size, raw->frequency, raw->duty_cycle);
+        const uint32_t* timings;
+        size_t timings_cnt;
+        infrared_worker_get_raw_signal(received_signal, &timings, &timings_cnt);
+        if(dst->timings) free(dst->timings);
+        dst->is_raw = true;
+        dst->timings = malloc(sizeof(uint32_t) * timings_cnt);
+        memcpy(dst->timings, timings, sizeof(uint32_t) * timings_cnt);
+        dst->timings_size = timings_cnt;
+        dst->frequency = INFRARED_COMMON_CARRIER_FREQUENCY;
+        dst->duty_cycle = INFRARED_COMMON_DUTY_CYCLE;
     }
 
     /*
@@ -65,8 +73,13 @@ static void tv_remote_learn_ir_rx_callback(void* context, InfraredWorkerSignal* 
 
 /* ---- Helper: start / stop IR worker ---- */
 
+static void tv_remote_learn_stop_rx(TvRemoteApp* app);
+
 static void tv_remote_learn_start_rx(TvRemoteApp* app) {
-    if(app->worker_active) return;
+    /* Stop any previously active worker so we can start fresh. */
+    if(app->worker_active) {
+        tv_remote_learn_stop_rx(app);
+    }
     app->learn_signal_received = false; /* reset for next capture */
     app->worker = infrared_worker_alloc();
     infrared_worker_rx_set_received_signal_callback(
@@ -95,32 +108,30 @@ static bool tv_remote_learn_custom_event_callback(void* context, uint32_t event)
         app->learn_view,
         TvRemoteLearnModel * model,
         {
-            InfraredSignal* sig = app->buttons[app->learn_index].signal;
+            TvRemoteIrSignal* sig = &app->buttons[app->learn_index].signal;
             model->state = LearnStateReceived;
             model->button_index = app->learn_index;
 
-            if(infrared_signal_is_raw(sig)) {
+            if(sig->is_raw) {
                 model->signal_is_parsed = false;
-                InfraredRawSignal* raw = infrared_signal_get_raw_signal(sig);
                 snprintf(model->info_line1, sizeof(model->info_line1), "Type: RAW");
                 snprintf(
                     model->info_line2,
                     sizeof(model->info_line2),
                     "Timings: %u",
-                    (unsigned)raw->timings_size);
+                    (unsigned)sig->timings_size);
             } else {
                 model->signal_is_parsed = true;
-                InfraredMessage* msg = infrared_signal_get_message(sig);
                 snprintf(
                     model->info_line1,
                     sizeof(model->info_line1),
                     "Proto: %s",
-                    infrared_get_protocol_name(msg->protocol));
+                    infrared_get_protocol_name(sig->message.protocol));
                 snprintf(
                     model->info_line2,
                     sizeof(model->info_line2),
                     "Cmd: 0x%04lX",
-                    (unsigned long)msg->command);
+                    (unsigned long)sig->message.command);
             }
         },
         true);

@@ -72,19 +72,26 @@ typedef struct {
  * true before infrared_worker_tx_start and cleared before
  * infrared_worker_tx_stop, making concurrent access safe on ARM Cortex-M.
  */
-static InfraredStatus tv_remote_tx_callback(void* context, InfraredWorker* instance) {
+static InfraredWorkerGetSignalResponse
+    tv_remote_tx_callback(void* context, InfraredWorker* instance) {
     TvRemoteApp* app = context;
 
     if(!app->tx_active) {
-        return InfraredStatusDone;
+        return InfraredWorkerGetSignalResponseStop;
     }
 
     uint8_t idx = app->remote_selected;
     if(idx < TV_BUTTON_COUNT && app->buttons[idx].learned) {
-        infrared_worker_tx_set_signal_to_worker(instance, app->buttons[idx].signal);
-        return InfraredStatusOk;
+        TvRemoteIrSignal* sig = &app->buttons[idx].signal;
+        if(sig->is_raw) {
+            infrared_worker_set_raw_signal(
+                instance, sig->timings, sig->timings_size, sig->frequency, sig->duty_cycle);
+        } else {
+            infrared_worker_set_decoded_signal(instance, &sig->message);
+        }
+        return InfraredWorkerGetSignalResponseNew;
     }
-    return InfraredStatusDone;
+    return InfraredWorkerGetSignalResponseStop;
 }
 
 /* ---- TX start / stop helpers ---- */
