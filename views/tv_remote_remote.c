@@ -392,7 +392,7 @@ View* tv_remote_remote_view_alloc(TvRemoteApp* app) {
     view_set_input_callback(view, tv_remote_remote_input_callback);
     view_set_enter_callback(view, tv_remote_remote_enter_callback);
     view_set_exit_callback(view, tv_remote_remote_exit_callback);
-    view_set_orientation(view, ViewOrientationVerticalFlip);
+    view_set_orientation(view, ViewOrientationVertical);
 
     with_view_model(
         view,
