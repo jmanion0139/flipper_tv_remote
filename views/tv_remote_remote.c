@@ -30,26 +30,28 @@
 /* ---- Layout constants ---- */
 
 #define CELL_W 32
-#define CELL_H 18
+#define CELL_H 14
 #define COLS 4
-#define ROWS 3
+#define ROWS 4
 #define GRID_X 0
-#define GRID_Y 10 /* leaves 10 px for the title bar at top */
+#define GRID_Y 8 /* leaves 8 px for the title bar at top */
 
 /* Abbreviated labels displayed in each cell (same order as TvButton enum). */
 static const char* const cell_labels[TV_BUTTON_COUNT] = {
-    "PWR", /* TvButtonPower  */
-    "MUT", /* TvButtonMute   */
-    "V+",  /* TvButtonVolUp  */
-    "V-",  /* TvButtonVolDn  */
-    "C+",  /* TvButtonChUp   */
-    "C-",  /* TvButtonChDn   */
-    "\x18", /* TvButtonUp    (↑, code 0x18 in 5x7 font) */
-    "\x19", /* TvButtonDown  (↓) */
-    "\x1B", /* TvButtonLeft  (←) */
-    "\x1A", /* TvButtonRight (→) */
-    "OK",  /* TvButtonOk     */
-    "BCK", /* TvButtonBack   */
+    "PWR", /* TvButtonPower     */
+    "MUT", /* TvButtonMute      */
+    "V+",  /* TvButtonVolUp     */
+    "V-",  /* TvButtonVolDn     */
+    "C+",  /* TvButtonChUp      */
+    "C-",  /* TvButtonChDn      */
+    "\x18", /* TvButtonUp       (↑) */
+    "\x19", /* TvButtonDown     (↓) */
+    "\x1B", /* TvButtonLeft     (←) */
+    "\x1A", /* TvButtonRight    (→) */
+    "OK",  /* TvButtonOk        */
+    "BCK", /* TvButtonBack      */
+    "HOM", /* TvButtonHome      */
+    "P/P", /* TvButtonPlayPause */
 };
 
 /* ---- View model ---- */

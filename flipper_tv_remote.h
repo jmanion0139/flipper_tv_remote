@@ -30,7 +30,7 @@
 #define TV_REMOTE_FILE_PATH ANY_PATH("infrared/TV_Remote.ir")
 
 /** Number of buttons the app can learn and replay. */
-#define TV_BUTTON_COUNT 12
+#define TV_BUTTON_COUNT 14
 
 /** Indices for each learnable TV button. */
 typedef enum {
@@ -46,6 +46,8 @@ typedef enum {
     TvButtonRight,
     TvButtonOk,
     TvButtonBack,
+    TvButtonHome,
+    TvButtonPlayPause,
 } TvButton;
 
 /** View identifiers used with the ViewDispatcher. */

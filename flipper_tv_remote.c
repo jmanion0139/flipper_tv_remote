@@ -22,6 +22,8 @@ const char* const tv_remote_button_names[TV_BUTTON_COUNT] = {
     "Right",
     "Ok",
     "Back",
+    "Home",
+    "Play_pause",
 };
 
 /* ---- Main menu callbacks ---- */
