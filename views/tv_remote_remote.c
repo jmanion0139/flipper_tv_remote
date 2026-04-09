@@ -423,10 +423,8 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
     const ButtonMapping* map = &key_map[event->key];
 
     if(event->type == InputTypePress) {
-        /* Visual feedback only – no IR yet (wait for release or long hold) */
-        app->remote_pressed_keys |= key_to_bit(event->key);
+        /* Consume silently – no visual until action is decided */
         app->remote_held_long = false;
-        tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
         return true;
     }
 
