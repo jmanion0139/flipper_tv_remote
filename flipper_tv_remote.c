@@ -269,6 +269,7 @@ TvRemoteApp* tv_remote_app_alloc(void) {
     app->remote_selected = 0;
     app->tx_active = false;
     app->remote_pressed_keys = 0;
+    app->remote_held_long = false;
     app->last_back_tick = 0;
 
     /* ViewDispatcher */

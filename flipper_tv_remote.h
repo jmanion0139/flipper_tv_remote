@@ -114,6 +114,7 @@ struct TvRemoteApp {
     uint8_t remote_selected; /**< Button index highlighted in the remote view. */
     bool tx_active; /**< True while sending IR in remote view. */
     uint8_t remote_pressed_keys; /**< Bitmask of physically held d-pad/ok keys. */
+    bool remote_held_long; /**< True once InputTypeLong fires (alt action started). */
 
     /* Back-button double-tap detection */
     uint32_t last_back_tick; /**< furi_get_tick() of last Back short press. */

@@ -363,16 +363,16 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
     const ButtonMapping* map = &key_map[event->key];
 
     if(event->type == InputTypePress) {
-        /* Start sending the press action */
+        /* Visual feedback only – no IR yet (wait for release or long hold) */
         app->remote_pressed_keys |= key_to_bit(event->key);
-        tv_remote_tx_start(app, map->press_btn);
-        tv_remote_remote_update_model(app, (int8_t)map->press_btn, false, app->remote_pressed_keys);
+        app->remote_held_long = false;
+        tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
         return true;
     }
 
     if(event->type == InputTypeLong) {
-        /* Switch to hold action */
-        tv_remote_tx_stop(app);
+        /* Start sending the hold/alt action */
+        app->remote_held_long = true;
         tv_remote_tx_start(app, map->hold_btn);
         tv_remote_remote_update_model(app, (int8_t)map->hold_btn, true, app->remote_pressed_keys);
         return true;
@@ -380,7 +380,14 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
 
     if(event->type == InputTypeRelease) {
         app->remote_pressed_keys &= ~key_to_bit(event->key);
-        tv_remote_tx_stop(app);
+        if(app->remote_held_long) {
+            /* Was holding alt action – just stop it */
+            tv_remote_tx_stop(app);
+        } else {
+            /* Quick tap – send a brief burst of the primary action */
+            tv_remote_ir_burst(app, map->press_btn);
+        }
+        app->remote_held_long = false;
         tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
         return true;
     }
@@ -400,6 +407,7 @@ static void tv_remote_remote_enter_callback(void* context) {
     app->tx_active = false;
     app->last_back_tick = 0;
     app->remote_pressed_keys = 0;
+    app->remote_held_long = false;
     tv_remote_remote_update_model(app, -1, false, 0);
 }
 
