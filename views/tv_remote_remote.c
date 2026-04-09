@@ -280,6 +280,17 @@ static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
     canvas_draw_line(canvas, cx + D_OK, cy + D_OK, cx + D_HOLD, cy + D_HOLD); /* SE */
     canvas_draw_line(canvas, cx - D_OK, cy + D_OK, cx - D_HOLD, cy + D_HOLD); /* SW */
 
+    /* ── 4. Home icon (house) inside inner circle ── */
+    canvas_set_color(canvas, home_active ? ColorWhite : ColorBlack);
+    /* Roof: inverted-V, apex at top, base at mid */
+    canvas_draw_line(canvas, cx,     cy - 5, cx - 4, cy - 1); /* left slope  */
+    canvas_draw_line(canvas, cx,     cy - 5, cx + 4, cy - 1); /* right slope */
+    /* Body: walls + floor */
+    canvas_draw_line(canvas, cx - 3, cy - 1, cx - 3, cy + 4); /* left wall   */
+    canvas_draw_line(canvas, cx + 3, cy - 1, cx + 3, cy + 4); /* right wall  */
+    canvas_draw_line(canvas, cx - 3, cy + 4, cx + 3, cy + 4); /* floor       */
+    canvas_set_color(canvas, ColorBlack);
+
     /* ── Bottom bar ── */
     const int box_y = 90;
     const int box_h = 24;
