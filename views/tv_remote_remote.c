@@ -294,10 +294,21 @@ static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
     } else {
         canvas_draw_rframe(canvas, box_gap, box_y, box_w, box_h, 3);
     }
-    canvas_draw_triangle(
-        canvas, box_gap + box_w / 2 - 2, box_y + 6, 6, 5, CanvasDirectionRightToLeft);
-    canvas_draw_str_aligned(
-        canvas, box_gap + box_w / 2, box_y + box_h - 4, AlignCenter, AlignBottom, "Back");
+    /* Curved return arrow (resembles Flipper Zero back button icon) */
+    {
+        const int bx = box_gap + box_w / 2; /* centre x of box */
+        const int by = box_y + box_h / 2;   /* centre y of box */
+        /* Horizontal shaft pointing left */
+        canvas_draw_line(canvas, bx - 7, by + 2, bx + 5, by + 2);
+        /* Curve up-right: short arc from shaft-right going up */
+        canvas_draw_line(canvas, bx + 5, by + 2, bx + 7, by);
+        canvas_draw_line(canvas, bx + 7, by, bx + 7, by - 4);
+        canvas_draw_line(canvas, bx + 7, by - 4, bx + 5, by - 6);
+        canvas_draw_line(canvas, bx + 5, by - 6, bx + 1, by - 6);
+        /* Arrowhead at left end of shaft */
+        canvas_draw_line(canvas, bx - 7, by + 2, bx - 4, by - 1);
+        canvas_draw_line(canvas, bx - 7, by + 2, bx - 4, by + 5);
+    }
     if(back_active) canvas_set_color(canvas, ColorBlack);
 
     /* Power box */
