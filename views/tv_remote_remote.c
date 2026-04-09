@@ -27,29 +27,15 @@
 #define DISP_W 64
 #define DISP_H 128
 
-/* Full-width button box (Up / Down) */
-#define BOX_FULL_W 50
-#define BOX_H      12
-#define BOX_FULL_X ((DISP_W - BOX_FULL_W) / 2) /* 7 */
+/* Concentric-circle radii (Home < Ok < D-pad < Hold) */
+#define R_HOME  7
+#define R_OK   14
+#define R_DPAD 22
+#define R_HOLD 30
 
-/* Middle-row boxes (Left / Ok / Right) */
-#define BOX_SIDE_W 18
-#define BOX_MID_W  20
-#define BOX_GAP    3
-#define BOX_LEFT_X 1
-#define BOX_OK_X   (BOX_LEFT_X + BOX_SIDE_W + BOX_GAP)   /* 22 */
-#define BOX_RIGHT_X (BOX_OK_X + BOX_MID_W + BOX_GAP)     /* 45 */
-
-/* Vertical positions */
-#define TITLE_Y     5
-#define SEP1_Y      11
-#define UP_Y        15
-#define MID_Y       38
-#define DOWN_Y      68
-#define SEP2_Y      90
-#define BACK_Y      94
-#define BACK_W      30
-#define BACK_X      ((DISP_W - BACK_W) / 2)
+/* Diagonal intercepts at 45° for divider lines: round(r * 0.707). */
+#define D_OK   10
+#define D_HOLD 21
 
 /* Double-tap detection window (ms) */
 #define DOUBLE_TAP_MS 400
@@ -161,154 +147,177 @@ static void tv_remote_tx_stop(TvRemoteApp* app) {
     app->tx_active = false;
 }
 
-/* ---- Draw callback ---- */
+/* ---- Concentric-circle drawing helpers ---- */
 
-/** True when the key should be drawn filled (sending IR or physically held). */
-static inline bool is_dir_active(const TvRemoteRemoteModel* m, InputKey dir) {
-    /* Physical hold check */
-    if(m->pressed_keys & key_to_bit(dir)) return true;
-    /* IR-sending check (covers hold actions mapped back to the physical key) */
-    int8_t b = m->active_button;
-    switch(dir) {
-    case InputKeyUp:    return b == (int8_t)TvButtonUp    || b == (int8_t)TvButtonVolUp;
-    case InputKeyDown:  return b == (int8_t)TvButtonDown  || b == (int8_t)TvButtonVolDn;
-    case InputKeyLeft:  return b == (int8_t)TvButtonLeft  || b == (int8_t)TvButtonChDn;
-    case InputKeyRight: return b == (int8_t)TvButtonRight || b == (int8_t)TvButtonChUp;
-    case InputKeyOk:    return b == (int8_t)TvButtonOk    || b == (int8_t)TvButtonHome;
-    default:            return false;
+/** Quadrant directions for ring fills. */
+#define QUAD_TOP    0
+#define QUAD_BOTTOM 1
+#define QUAD_LEFT   2
+#define QUAD_RIGHT  3
+
+/**
+ * Fill a wedge-shaped quadrant of a ring (annulus sector).
+ * Pixels exactly on the 45° diagonals are skipped, creating natural gap lines.
+ */
+static void draw_ring_quadrant_filled(
+    Canvas* canvas,
+    int cx,
+    int cy,
+    int r_in,
+    int r_out,
+    uint8_t direction) {
+    int ri2 = r_in * r_in;
+    int ro2 = r_out * r_out;
+    for(int dy = -r_out; dy <= r_out; dy++) {
+        for(int dx = -r_out; dx <= r_out; dx++) {
+            int d2 = dx * dx + dy * dy;
+            if(d2 < ri2 || d2 > ro2) continue;
+            bool in_q = false;
+            switch(direction) {
+            case QUAD_TOP:
+                in_q = (dy < 0 && dy * dy > dx * dx);
+                break;
+            case QUAD_BOTTOM:
+                in_q = (dy > 0 && dy * dy > dx * dx);
+                break;
+            case QUAD_LEFT:
+                in_q = (dx < 0 && dx * dx > dy * dy);
+                break;
+            case QUAD_RIGHT:
+                in_q = (dx > 0 && dx * dx > dy * dy);
+                break;
+            }
+            if(in_q) canvas_draw_dot(canvas, cx + dx, cy + dy);
+        }
     }
 }
+
+/** Fill a full ring (annulus). */
+static void draw_ring_filled(Canvas* canvas, int cx, int cy, int r_in, int r_out) {
+    int ri2 = r_in * r_in;
+    int ro2 = r_out * r_out;
+    for(int dy = -r_out; dy <= r_out; dy++) {
+        for(int dx = -r_out; dx <= r_out; dx++) {
+            int d2 = dx * dx + dy * dy;
+            if(d2 >= ri2 && d2 <= ro2) {
+                canvas_draw_dot(canvas, cx + dx, cy + dy);
+            }
+        }
+    }
+}
+
+/* ---- Draw callback ---- */
 
 static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
     TvRemoteRemoteModel* model = model_void;
     canvas_clear(canvas);
 
-    // Center of d-pad
-    const int cx = DISP_W / 2;
-    const int cy = DISP_H / 2 - 8;
-    const int arrow_len = 14;
-    const int arrow_w = 7;
-    const int dot_r = 4;
+    const int cx = DISP_W / 2;      /* 32 */
+    const int cy = 45;              /* midpoint between top and Back/Power boxes */
+
+    int8_t ab = model->active_button;
+    uint8_t pk = model->pressed_keys;
+    bool is_hold = model->active_is_hold;
+
+    /* ── Determine which sections are active ── */
+
+    /* Center: Home (hold-Ok) */
+    bool home_active = (ab == (int8_t)TvButtonHome);
+
+    /* Ring 2: Ok (press-Ok, but not when hold is active) */
+    bool ok_active = (ab == (int8_t)TvButtonOk) ||
+                     ((pk & KEY_BIT_OK) && !is_hold);
+
+    /* Ring 3 quadrants: d-pad press actions */
+    bool r3_top = (ab == (int8_t)TvButtonUp) ||
+                  ((pk & KEY_BIT_UP) && !is_hold);
+    bool r3_bottom = (ab == (int8_t)TvButtonDown) ||
+                     ((pk & KEY_BIT_DOWN) && !is_hold);
+    bool r3_left = (ab == (int8_t)TvButtonLeft) ||
+                   ((pk & KEY_BIT_LEFT) && !is_hold);
+    bool r3_right = (ab == (int8_t)TvButtonRight) ||
+                    ((pk & KEY_BIT_RIGHT) && !is_hold);
+
+    /* Ring 4 quadrants: hold actions */
+    bool r4_top    = (ab == (int8_t)TvButtonVolUp);
+    bool r4_bottom = (ab == (int8_t)TvButtonVolDn);
+    bool r4_left   = (ab == (int8_t)TvButtonChDn);
+    bool r4_right  = (ab == (int8_t)TvButtonChUp);
 
     canvas_set_font(canvas, FontSecondary);
+    canvas_set_color(canvas, ColorBlack);
 
-    // Arrow geometry
-    const size_t ab = (size_t)(arrow_w * 2); // triangle base
-    const size_t ah = (size_t)(arrow_len - 4); // triangle height
-    // Outline vertices relative to each tip:
-    //   Up:    tip (cx, cy-al), base corners (cx±aw, cy-al+ah)
-    //   Down:  tip (cx, cy+al), base corners (cx±aw, cy+al-ah)
-    //   Left:  tip (cx-al, cy), base corners (cx-al+ah, cy±aw)
-    //   Right: tip (cx+al, cy), base corners (cx+al-ah, cy±aw)
+    /* ── 1. Fill active sections ── */
 
-#define DRAW_ARROW_OUTLINE_UP() do { \
-    canvas_draw_line(canvas, cx, cy - arrow_len, cx - arrow_w, cy - arrow_len + (int)ah); \
-    canvas_draw_line(canvas, cx, cy - arrow_len, cx + arrow_w, cy - arrow_len + (int)ah); \
-    canvas_draw_line(canvas, cx - arrow_w, cy - arrow_len + (int)ah, cx + arrow_w, cy - arrow_len + (int)ah); \
-} while(0)
-#define DRAW_ARROW_OUTLINE_DOWN() do { \
-    canvas_draw_line(canvas, cx, cy + arrow_len, cx - arrow_w, cy + arrow_len - (int)ah); \
-    canvas_draw_line(canvas, cx, cy + arrow_len, cx + arrow_w, cy + arrow_len - (int)ah); \
-    canvas_draw_line(canvas, cx - arrow_w, cy + arrow_len - (int)ah, cx + arrow_w, cy + arrow_len - (int)ah); \
-} while(0)
-#define DRAW_ARROW_OUTLINE_LEFT() do { \
-    canvas_draw_line(canvas, cx - arrow_len, cy, cx - arrow_len + (int)ah, cy - arrow_w); \
-    canvas_draw_line(canvas, cx - arrow_len, cy, cx - arrow_len + (int)ah, cy + arrow_w); \
-    canvas_draw_line(canvas, cx - arrow_len + (int)ah, cy - arrow_w, cx - arrow_len + (int)ah, cy + arrow_w); \
-} while(0)
-#define DRAW_ARROW_OUTLINE_RIGHT() do { \
-    canvas_draw_line(canvas, cx + arrow_len, cy, cx + arrow_len - (int)ah, cy - arrow_w); \
-    canvas_draw_line(canvas, cx + arrow_len, cy, cx + arrow_len - (int)ah, cy + arrow_w); \
-    canvas_draw_line(canvas, cx + arrow_len - (int)ah, cy - arrow_w, cx + arrow_len - (int)ah, cy + arrow_w); \
-} while(0)
+    /* Ring 4 (outermost – hold actions) */
+    if(r4_top)    draw_ring_quadrant_filled(canvas, cx, cy, R_DPAD, R_HOLD, QUAD_TOP);
+    if(r4_bottom) draw_ring_quadrant_filled(canvas, cx, cy, R_DPAD, R_HOLD, QUAD_BOTTOM);
+    if(r4_left)   draw_ring_quadrant_filled(canvas, cx, cy, R_DPAD, R_HOLD, QUAD_LEFT);
+    if(r4_right)  draw_ring_quadrant_filled(canvas, cx, cy, R_DPAD, R_HOLD, QUAD_RIGHT);
 
-    // Up
-    if(is_dir_active(model, InputKeyUp)) {
-        canvas_draw_triangle(canvas, cx, cy - arrow_len, ab, ah, CanvasDirectionBottomToTop);
-    } else {
-        DRAW_ARROW_OUTLINE_UP();
-    }
-    // Down
-    if(is_dir_active(model, InputKeyDown)) {
-        canvas_draw_triangle(canvas, cx, cy + arrow_len, ab, ah, CanvasDirectionTopToBottom);
-    } else {
-        DRAW_ARROW_OUTLINE_DOWN();
-    }
-    // Left
-    if(is_dir_active(model, InputKeyLeft)) {
-        canvas_draw_triangle(canvas, cx - arrow_len, cy, ab, ah, CanvasDirectionRightToLeft);
-    } else {
-        DRAW_ARROW_OUTLINE_LEFT();
-    }
-    // Right
-    if(is_dir_active(model, InputKeyRight)) {
-        canvas_draw_triangle(canvas, cx + arrow_len, cy, ab, ah, CanvasDirectionLeftToRight);
-    } else {
-        DRAW_ARROW_OUTLINE_RIGHT();
-    }
+    /* Ring 3 (d-pad press actions) */
+    if(r3_top)    draw_ring_quadrant_filled(canvas, cx, cy, R_OK, R_DPAD, QUAD_TOP);
+    if(r3_bottom) draw_ring_quadrant_filled(canvas, cx, cy, R_OK, R_DPAD, QUAD_BOTTOM);
+    if(r3_left)   draw_ring_quadrant_filled(canvas, cx, cy, R_OK, R_DPAD, QUAD_LEFT);
+    if(r3_right)  draw_ring_quadrant_filled(canvas, cx, cy, R_OK, R_DPAD, QUAD_RIGHT);
 
-#undef DRAW_ARROW_OUTLINE_UP
-#undef DRAW_ARROW_OUTLINE_DOWN
-#undef DRAW_ARROW_OUTLINE_LEFT
-#undef DRAW_ARROW_OUTLINE_RIGHT
+    /* Ring 2: Ok */
+    if(ok_active) draw_ring_filled(canvas, cx, cy, R_HOME, R_OK);
 
-    // Ok (filled disc when active, outline circle when idle)
-    if(is_dir_active(model, InputKeyOk)) {
-        canvas_draw_disc(canvas, cx, cy, (size_t)dot_r);
-    } else {
-        canvas_draw_circle(canvas, cx, cy, (size_t)dot_r);
-    }
+    /* Ring 1: Home */
+    if(home_active) canvas_draw_disc(canvas, cx, cy, R_HOME);
 
-    // ── Bottom bar ──
-    const int box_y   = 80;
-    const int box_h   = 24;
-    const int box_w   = 28;
+    /* ── 2. Circle outlines ── */
+    canvas_set_color(canvas, ColorBlack);
+    canvas_draw_circle(canvas, cx, cy, R_HOME);
+    canvas_draw_circle(canvas, cx, cy, R_OK);
+    canvas_draw_circle(canvas, cx, cy, R_DPAD);
+    canvas_draw_circle(canvas, cx, cy, R_HOLD);
+
+    /* ── 3. Diagonal dividers (R_OK → R_HOLD at 45°) ── */
+    canvas_draw_line(canvas, cx + D_OK, cy - D_OK, cx + D_HOLD, cy - D_HOLD); /* NE */
+    canvas_draw_line(canvas, cx - D_OK, cy - D_OK, cx - D_HOLD, cy - D_HOLD); /* NW */
+    canvas_draw_line(canvas, cx + D_OK, cy + D_OK, cx + D_HOLD, cy + D_HOLD); /* SE */
+    canvas_draw_line(canvas, cx - D_OK, cy + D_OK, cx - D_HOLD, cy + D_HOLD); /* SW */
+
+    /* ── Bottom bar ── */
+    const int box_y = 90;
+    const int box_h = 24;
+    const int box_w = 28;
     const int box_gap = 2;
-    const int back_box_x  = box_gap;
-    const int power_box_x = DISP_W - box_w - box_gap;
-    const int hint_y  = 112;
 
-    // Back box
-    bool back_active = (model->active_button == (int8_t)TvButtonBack);
+    /* Back box */
+    bool back_active = (ab == (int8_t)TvButtonBack);
     if(back_active) {
-        canvas_draw_rbox(canvas, back_box_x, box_y, box_w, box_h, 3);
+        canvas_draw_rbox(canvas, box_gap, box_y, box_w, box_h, 3);
         canvas_set_color(canvas, ColorWhite);
     } else {
-        canvas_draw_rframe(canvas, back_box_x, box_y, box_w, box_h, 3);
+        canvas_draw_rframe(canvas, box_gap, box_y, box_w, box_h, 3);
     }
-    // Back icon (left-pointing triangle) inside box, upper half
     canvas_draw_triangle(
-        canvas, back_box_x + box_w / 2 - 2, box_y + 6, 6, 5, CanvasDirectionRightToLeft);
-    // "Back" label inside box, lower half
+        canvas, box_gap + box_w / 2 - 2, box_y + 6, 6, 5, CanvasDirectionRightToLeft);
     canvas_draw_str_aligned(
-        canvas, back_box_x + box_w / 2, box_y + box_h - 4, AlignCenter, AlignBottom, "Back");
-    if(back_active) {
-        canvas_set_color(canvas, ColorBlack);
-    }
+        canvas, box_gap + box_w / 2, box_y + box_h - 4, AlignCenter, AlignBottom, "Back");
+    if(back_active) canvas_set_color(canvas, ColorBlack);
 
-    // Power box
-    bool power_active = back_active; /* Power shares the back key (double-tap) */
-    /* However, we don't have a separate physical key — show power inverted
-       only when active_button == TvButtonPower (during an IR burst). */
-    power_active = (model->active_button == (int8_t)TvButtonPower);
+    /* Power box */
+    bool power_active = (ab == (int8_t)TvButtonPower);
+    const int power_box_x = DISP_W - box_w - box_gap;
     if(power_active) {
         canvas_draw_rbox(canvas, power_box_x, box_y, box_w, box_h, 3);
         canvas_set_color(canvas, ColorWhite);
     } else {
         canvas_draw_rframe(canvas, power_box_x, box_y, box_w, box_h, 3);
     }
-    // "x2" inside box, upper half
     canvas_draw_str_aligned(
         canvas, power_box_x + box_w / 2, box_y + 5, AlignCenter, AlignTop, "x2");
-    // "Power" label inside box, lower half
     canvas_draw_str_aligned(
-        canvas, power_box_x + box_w / 2, box_y + box_h - 4, AlignCenter, AlignBottom, "Power");
-    if(power_active) {
-        canvas_set_color(canvas, ColorBlack);
-    }
+        canvas, power_box_x + box_w / 2, box_y + box_h - 4, AlignCenter, AlignBottom, "Pwr");
+    if(power_active) canvas_set_color(canvas, ColorBlack);
 
-    // Hint (lowered)
-    canvas_draw_str_aligned(canvas, DISP_W / 2, hint_y, AlignCenter, AlignTop, "Hold for alt");
+    /* Hint */
+    canvas_draw_str_aligned(
+        canvas, DISP_W / 2, 118, AlignCenter, AlignTop, "Hold for alt");
 }
 
 /* ---- Helper: update model from app state ---- */
@@ -435,7 +444,9 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
             /* Was holding alt action – just stop it */
             tv_remote_tx_stop(app);
         } else {
-            /* Quick tap – send a brief burst of the primary action */
+            /* Quick tap – show active ring section during burst */
+            tv_remote_remote_update_model(
+                app, (int8_t)map->press_btn, false, app->remote_pressed_keys);
             tv_remote_ir_burst(app, map->press_btn);
         }
         app->remote_held_long = false;
