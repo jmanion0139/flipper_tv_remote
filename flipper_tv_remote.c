@@ -432,9 +432,109 @@ static void tv_remote_main_menu_callback(void* context, uint32_t index) {
         app->select_mode = TvRemoteSelectModeDelete;
         tv_remote_show_select_view(app);
         break;
+    case TvRemoteMenuButtonMap:
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewButtonMap);
+        break;
     default:
         break;
     }
+}
+
+/* ---- Button Map view ---- */
+
+typedef struct {
+    uint8_t scroll; /**< Top row index (0-based). */
+} TvRemoteButtonMapModel;
+
+/* All rows in display order */
+static const char* const bmap_lines[] = {
+    "  === D-Pad ===",
+    "Up       - Up",
+    "Down     - Down",
+    "Left     - Left",
+    "Right    - Right",
+    "Up[Hold] - Vol Up",
+    "Dn[Hold] - Vol Dn",
+    "Lt[Hold] - Ch Dn",
+    "Rt[Hold] - Ch Up",
+    "  === Center ===",
+    "OK       - OK",
+    "OK[Hold] - Home",
+    "  === Bottom ===",
+    "Back     - Back",
+    "Back x2  - Power",
+    "Back[Hold]- Exit",
+};
+#define BMAP_LINE_COUNT ((int)(sizeof(bmap_lines) / sizeof(bmap_lines[0])))
+#define BMAP_VISIBLE_ROWS 5
+#define BMAP_ROW_H 12
+#define BMAP_Y0 14
+
+static void tv_remote_bmap_draw_callback(Canvas* canvas, void* model_void) {
+    TvRemoteButtonMapModel* model = model_void;
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str_aligned(canvas, 64, 0, AlignCenter, AlignTop, "Button Map");
+    canvas_set_font(canvas, FontSecondary);
+    int top = (int)model->scroll;
+    for(int i = 0; i < BMAP_VISIBLE_ROWS; i++) {
+        int idx = top + i;
+        if(idx >= BMAP_LINE_COUNT) break;
+        canvas_draw_str(canvas, 0, BMAP_Y0 + i * BMAP_ROW_H, bmap_lines[idx]);
+    }
+    /* Scroll indicator */
+    if(BMAP_LINE_COUNT > BMAP_VISIBLE_ROWS) {
+        int bar_h = 50;
+        int thumb_h = bar_h * BMAP_VISIBLE_ROWS / BMAP_LINE_COUNT;
+        if(thumb_h < 4) thumb_h = 4;
+        int max_scroll = BMAP_LINE_COUNT - BMAP_VISIBLE_ROWS;
+        int thumb_y = 14 + (bar_h - thumb_h) * top / (max_scroll > 0 ? max_scroll : 1);
+        canvas_draw_line(canvas, 127, 14, 127, 14 + bar_h);
+        canvas_draw_box(canvas, 126, thumb_y, 2, thumb_h);
+    }
+}
+
+static bool tv_remote_bmap_input_callback(InputEvent* event, void* context) {
+    TvRemoteApp* app = context;
+    if(event->type != InputTypeShort && event->type != InputTypeRepeat) return false;
+    if(event->key == InputKeyBack) return false; /* let ViewDispatcher handle */
+    int delta = 0;
+    if(event->key == InputKeyUp) delta = -1;
+    else if(event->key == InputKeyDown) delta = 1;
+    else return false;
+    with_view_model(
+        app->button_map_view,
+        TvRemoteButtonMapModel * model,
+        {
+            int s = (int)model->scroll + delta;
+            int max = BMAP_LINE_COUNT - BMAP_VISIBLE_ROWS;
+            if(s < 0) s = 0;
+            if(s > max) s = max;
+            model->scroll = (uint8_t)s;
+        },
+        true);
+    return true;
+}
+
+static void tv_remote_bmap_enter_callback(void* context) {
+    TvRemoteApp* app = context;
+    with_view_model(
+        app->button_map_view,
+        TvRemoteButtonMapModel * model,
+        { model->scroll = 0; },
+        true);
+}
+
+static View* tv_remote_bmap_view_alloc(TvRemoteApp* app) {
+    View* view = view_alloc();
+    view_set_context(view, app);
+    view_allocate_model(view, ViewModelTypeLocking, sizeof(TvRemoteButtonMapModel));
+    view_set_draw_callback(view, tv_remote_bmap_draw_callback);
+    view_set_input_callback(view, tv_remote_bmap_input_callback);
+    view_set_enter_callback(view, tv_remote_bmap_enter_callback);
+    with_view_model(
+        view, TvRemoteButtonMapModel * model, { model->scroll = 0; }, true);
+    return view;
 }
 
 /* ---- Back-button double-tap timer ---- */
@@ -477,6 +577,8 @@ TvRemoteApp* tv_remote_app_alloc(void) {
         app->main_menu, "Use Remote", TvRemoteMenuUse, tv_remote_main_menu_callback, app);
     submenu_add_item(
         app->main_menu, "Delete Remote", TvRemoteMenuDelete, tv_remote_main_menu_callback, app);
+    submenu_add_item(
+        app->main_menu, "Button Map", TvRemoteMenuButtonMap, tv_remote_main_menu_callback, app);
     View* main_menu_view = submenu_get_view(app->main_menu);
     view_set_previous_callback(main_menu_view, tv_remote_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewMainMenu, main_menu_view);
@@ -521,6 +623,11 @@ TvRemoteApp* tv_remote_app_alloc(void) {
     view_set_previous_callback(app->remote_view, tv_remote_back_to_menu_callback);
     view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewRemote, app->remote_view);
 
+    /* ── Button Map view ── */
+    app->button_map_view = tv_remote_bmap_view_alloc(app);
+    view_set_previous_callback(app->button_map_view, tv_remote_back_to_menu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewButtonMap, app->button_map_view);
+
     return app;
 }
 
@@ -546,6 +653,7 @@ void tv_remote_app_free(TvRemoteApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewRemote);
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewSelectRemote);
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewTextInput);
+    view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewButtonMap);
 
     submenu_free(app->main_menu);
     submenu_free(app->learn_menu);
@@ -553,6 +661,7 @@ void tv_remote_app_free(TvRemoteApp* app) {
     text_input_free(app->text_input);
     tv_remote_learn_view_free(app->learn_view);
     tv_remote_remote_view_free(app->remote_view);
+    view_free(app->button_map_view);
 
     view_dispatcher_free(app->view_dispatcher);
 

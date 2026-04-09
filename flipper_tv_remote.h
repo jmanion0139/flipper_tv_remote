@@ -60,6 +60,7 @@ typedef enum {
     TvRemoteViewRemote,
     TvRemoteViewSelectRemote,
     TvRemoteViewTextInput,
+    TvRemoteViewButtonMap,
 } TvRemoteViewId;
 
 /** Main menu item indices. */
@@ -67,6 +68,7 @@ typedef enum {
     TvRemoteMenuLearn = 0,
     TvRemoteMenuUse,
     TvRemoteMenuDelete,
+    TvRemoteMenuButtonMap,
 } TvRemoteMenuItem;
 
 /** What action to perform when a remote is selected in the picker. */
@@ -115,6 +117,7 @@ struct TvRemoteApp {
     TextInput* text_input;
     View* learn_view;
     View* remote_view;
+    View* button_map_view;
 
     /* Button storage */
     TvRemoteButton buttons[TV_BUTTON_COUNT];
