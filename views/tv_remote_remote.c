@@ -78,7 +78,7 @@ typedef struct {
     int8_t active_button;  /**< TvButton index being sent (-1 = idle). */
     bool active_is_hold;   /**< True when the hold action is active. */
     bool learned[TV_BUTTON_COUNT]; /**< Snapshot – which buttons have signals. */
-    uint8_t pressed_keys;  /**< Bitmask of physically held d-pad/ok keys. */
+    uint8_t pressed_keys;  /**< Bitmask of physically held d-pad/ok/back keys. */
 } TvRemoteRemoteModel;
 
 /* Bitmask bits for pressed_keys */
@@ -87,6 +87,7 @@ typedef struct {
 #define KEY_BIT_LEFT  (1u << 2)
 #define KEY_BIT_RIGHT (1u << 3)
 #define KEY_BIT_OK    (1u << 4)
+#define KEY_BIT_BACK  (1u << 5)
 
 static inline uint8_t key_to_bit(InputKey k) {
     switch(k) {
@@ -95,6 +96,7 @@ static inline uint8_t key_to_bit(InputKey k) {
     case InputKeyLeft:  return KEY_BIT_LEFT;
     case InputKeyRight: return KEY_BIT_RIGHT;
     case InputKeyOk:    return KEY_BIT_OK;
+    case InputKeyBack:  return KEY_BIT_BACK;
     default:            return 0;
     }
 }
@@ -257,29 +259,55 @@ static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
         canvas_draw_circle(canvas, cx, cy, (size_t)dot_r);
     }
 
-    // ── Bottom bar (raised so nothing is cut off) ──
-    // icon_y=81: back icon + x2 label
-    // label_y=92: "Back" + "Power" text
-    // hint_y=105: "Hold for alt"
-    const int icon_y  = 81;
-    const int label_y = 92;
-    const int hint_y  = 105;
+    // ── Bottom bar ──
+    const int box_y   = 80;
+    const int box_h   = 24;
+    const int box_w   = 28;
+    const int box_gap = 2;
+    const int back_box_x  = box_gap;
+    const int power_box_x = DISP_W - box_w - box_gap;
+    const int hint_y  = 112;
 
-    // Inset x-centres for Back (left) and Power (right) labels
-    const int back_cx  = 14;
-    const int power_cx = DISP_W - 15;
+    // Back box
+    bool back_active = (model->pressed_keys & KEY_BIT_BACK) != 0;
+    if(back_active) {
+        canvas_draw_rbox(canvas, back_box_x, box_y, box_w, box_h, 3);
+        canvas_set_color(canvas, ColorWhite);
+    } else {
+        canvas_draw_rframe(canvas, back_box_x, box_y, box_w, box_h, 3);
+    }
+    // Back icon (left-pointing triangle) inside box, upper half
+    canvas_draw_triangle(
+        canvas, back_box_x + box_w / 2 - 2, box_y + 6, 6, 5, CanvasDirectionRightToLeft);
+    // "Back" label inside box, lower half
+    canvas_draw_str_aligned(
+        canvas, back_box_x + box_w / 2, box_y + box_h - 4, AlignCenter, AlignBottom, "Back");
+    if(back_active) {
+        canvas_set_color(canvas, ColorBlack);
+    }
 
-    // Back icon: small left-pointing filled triangle, centred over "Back"
-    // canvas_draw_triangle tip x, tip y, base, height, dir
-    canvas_draw_triangle(canvas, back_cx - 2, icon_y + 3, 6, 5, CanvasDirectionRightToLeft);
-    // x2 above "Power", centred over it
-    canvas_draw_str_aligned(canvas, power_cx, icon_y, AlignCenter, AlignTop, "x2");
+    // Power box
+    bool power_active = back_active; /* Power shares the back key (double-tap) */
+    /* However, we don't have a separate physical key — show power inverted
+       only when active_button == TvButtonPower (during an IR burst). */
+    power_active = (model->active_button == (int8_t)TvButtonPower);
+    if(power_active) {
+        canvas_draw_rbox(canvas, power_box_x, box_y, box_w, box_h, 3);
+        canvas_set_color(canvas, ColorWhite);
+    } else {
+        canvas_draw_rframe(canvas, power_box_x, box_y, box_w, box_h, 3);
+    }
+    // "x2" inside box, upper half
+    canvas_draw_str_aligned(
+        canvas, power_box_x + box_w / 2, box_y + 5, AlignCenter, AlignTop, "x2");
+    // "Power" label inside box, lower half
+    canvas_draw_str_aligned(
+        canvas, power_box_x + box_w / 2, box_y + box_h - 4, AlignCenter, AlignBottom, "Power");
+    if(power_active) {
+        canvas_set_color(canvas, ColorBlack);
+    }
 
-    // Labels
-    canvas_draw_str_aligned(canvas, back_cx, label_y, AlignCenter, AlignTop, "Back");
-    canvas_draw_str_aligned(canvas, power_cx, label_y, AlignCenter, AlignTop, "Power");
-
-    // Hint
+    // Hint (lowered)
     canvas_draw_str_aligned(canvas, DISP_W / 2, hint_y, AlignCenter, AlignTop, "Hold for alt");
 }
 
@@ -320,10 +348,13 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
     if(event->key == InputKeyBack) {
         if(event->type == InputTypePress) {
             /* Consume press so ViewDispatcher doesn't navigate away */
+            app->remote_pressed_keys |= KEY_BIT_BACK;
+            tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
             return true;
         }
         if(event->type == InputTypeLong) {
             /* Hold back = exit: stop any active TX, let ViewDispatcher navigate */
+            app->remote_pressed_keys &= ~KEY_BIT_BACK;
             tv_remote_tx_stop(app);
             tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
             return false; /* ViewDispatcher handles exit */
@@ -333,17 +364,21 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
             if((now - app->last_back_tick) < furi_ms_to_ticks(DOUBLE_TAP_MS)) {
                 /* Double-tap → Power */
                 tv_remote_ir_burst(app, TvButtonPower);
+                app->remote_pressed_keys &= ~KEY_BIT_BACK;
                 tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
                 app->last_back_tick = 0; /* reset so a third tap = Back again */
             } else {
                 /* Single tap → Back IR */
                 tv_remote_ir_burst(app, TvButtonBack);
+                app->remote_pressed_keys &= ~KEY_BIT_BACK;
                 tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
                 app->last_back_tick = now;
             }
             return true;
         }
         if(event->type == InputTypeRelease) {
+            app->remote_pressed_keys &= ~KEY_BIT_BACK;
+            tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
             return true; /* consume release */
         }
         return false;
