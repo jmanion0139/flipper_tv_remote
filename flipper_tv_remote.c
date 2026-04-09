@@ -293,44 +293,55 @@ static uint32_t tv_remote_back_to_learn_menu_callback(void* context) {
 static void tv_remote_select_submenu_callback(void* context, uint32_t index) {
     TvRemoteApp* app = context;
     if(index == SELECT_CANCEL_INDEX) {
+        tv_remote_free_remote_names(app);
+        submenu_reset(app->select_submenu);
         view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewMainMenu);
         return;
     }
     if(index >= app->remote_count) return;
     const char* chosen = app->remote_names[index];
 
+    /* Capture chosen name into a local buffer before freeing remote_names */
+    char chosen_name[TV_REMOTE_NAME_MAX + 1];
+    strncpy(chosen_name, chosen, TV_REMOTE_NAME_MAX);
+    chosen_name[TV_REMOTE_NAME_MAX] = '\0';
+
+    /* Always clean up the list before switching views */
+    tv_remote_free_remote_names(app);
+    submenu_reset(app->select_submenu);
+
     switch(app->select_mode) {
     case TvRemoteSelectModeUse:
         tv_remote_app_clear_buttons(app);
-        tv_remote_app_load_named(app, chosen);
-        strncpy(app->current_remote_name, chosen, TV_REMOTE_NAME_MAX);
+        tv_remote_app_load_named(app, chosen_name);
+        strncpy(app->current_remote_name, chosen_name, TV_REMOTE_NAME_MAX);
         app->current_remote_name[TV_REMOTE_NAME_MAX] = '\0';
         view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewRemote);
         break;
     case TvRemoteSelectModeOverwrite:
-        strncpy(app->current_remote_name, chosen, TV_REMOTE_NAME_MAX);
+        strncpy(app->current_remote_name, chosen_name, TV_REMOTE_NAME_MAX);
         app->current_remote_name[TV_REMOTE_NAME_MAX] = '\0';
         tv_remote_app_clear_buttons(app);
         app->learn_index = 0;
         view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewLearn);
         break;
     case TvRemoteSelectModeDelete:
-        tv_remote_delete_remote(app, chosen);
+        tv_remote_delete_remote(app, chosen_name);
         notification_message(app->notifications, &sequence_success);
         view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewMainMenu);
         break;
     }
 }
 
-static void tv_remote_select_enter_callback(void* context) {
-    TvRemoteApp* app = context;
+/* Helper: scan remotes, populate submenu, and switch to select view.
+ * Does nothing (shows error notification) if no remotes are found. */
+static void tv_remote_show_select_view(TvRemoteApp* app) {
     tv_remote_scan_remotes(app);
     submenu_reset(app->select_submenu);
 
     if(app->remote_count == 0) {
-        /* No remotes – go straight back to main menu */
+        tv_remote_free_remote_names(app);
         notification_message(app->notifications, &sequence_error);
-        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewMainMenu);
         return;
     }
 
@@ -345,12 +356,7 @@ static void tv_remote_select_enter_callback(void* context) {
     submenu_add_item(
         app->select_submenu, "Cancel", SELECT_CANCEL_INDEX,
         tv_remote_select_submenu_callback, app);
-}
-
-static void tv_remote_select_exit_callback(void* context) {
-    TvRemoteApp* app = context;
-    tv_remote_free_remote_names(app);
-    submenu_reset(app->select_submenu);
+    view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewSelectRemote);
 }
 
 /* ---- Learn Menu view ---- */
@@ -370,7 +376,7 @@ static void tv_remote_learn_menu_callback(void* context, uint32_t index) {
         break;
     case LearnMenuUpdate:
         app->select_mode = TvRemoteSelectModeOverwrite;
-        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewSelectRemote);
+        tv_remote_show_select_view(app);
         break;
     default:
         break;
@@ -420,11 +426,11 @@ static void tv_remote_main_menu_callback(void* context, uint32_t index) {
         break;
     case TvRemoteMenuUse:
         app->select_mode = TvRemoteSelectModeUse;
-        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewSelectRemote);
+        tv_remote_show_select_view(app);
         break;
     case TvRemoteMenuDelete:
         app->select_mode = TvRemoteSelectModeDelete;
-        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewSelectRemote);
+        tv_remote_show_select_view(app);
         break;
     default:
         break;
@@ -488,9 +494,6 @@ TvRemoteApp* tv_remote_app_alloc(void) {
     /* ── Select Remote submenu ── */
     app->select_submenu = submenu_alloc();
     View* select_view = submenu_get_view(app->select_submenu);
-    view_set_context(select_view, app);
-    view_set_enter_callback(select_view, tv_remote_select_enter_callback);
-    view_set_exit_callback(select_view, tv_remote_select_exit_callback);
     view_set_previous_callback(select_view, tv_remote_back_to_menu_callback);
     view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewSelectRemote, select_view);
 
