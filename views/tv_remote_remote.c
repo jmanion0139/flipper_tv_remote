@@ -269,7 +269,7 @@ static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
     const int hint_y  = 112;
 
     // Back box
-    bool back_active = (model->pressed_keys & KEY_BIT_BACK) != 0;
+    bool back_active = (model->active_button == (int8_t)TvButtonBack);
     if(back_active) {
         canvas_draw_rbox(canvas, back_box_x, box_y, box_w, box_h, 3);
         canvas_set_color(canvas, ColorWhite);
@@ -365,14 +365,15 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
     /* ── Back button: hold to exit, short = Back IR, double-tap = Power ── */
     if(event->key == InputKeyBack) {
         if(event->type == InputTypePress) {
-            /* Consume press so ViewDispatcher doesn't navigate away */
-            app->remote_pressed_keys |= KEY_BIT_BACK;
-            tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
+            /* Consume silently – no visual until action is decided */
             return true;
         }
         if(event->type == InputTypeLong) {
-            /* Hold back = exit: stop any active TX, let ViewDispatcher navigate */
-            app->remote_pressed_keys &= ~KEY_BIT_BACK;
+            /* Hold back = exit: cancel any pending tap, let ViewDispatcher navigate */
+            if(app->back_pending) {
+                app->back_pending = false;
+                furi_timer_stop(app->back_timer);
+            }
             tv_remote_tx_stop(app);
             tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
             return false; /* ViewDispatcher handles exit */
@@ -385,20 +386,15 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
                 tv_remote_remote_update_model(
                     app, (int8_t)TvButtonPower, false, app->remote_pressed_keys);
                 tv_remote_ir_burst(app, TvButtonPower);
-                app->remote_pressed_keys &= ~KEY_BIT_BACK;
                 tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
             } else {
                 /* First tap – wait for possible double-tap */
                 app->back_pending = true;
-                app->remote_pressed_keys &= ~KEY_BIT_BACK;
-                tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
                 furi_timer_start(app->back_timer, furi_ms_to_ticks(DOUBLE_TAP_MS));
             }
             return true;
         }
         if(event->type == InputTypeRelease) {
-            app->remote_pressed_keys &= ~KEY_BIT_BACK;
-            tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
             return true; /* consume release */
         }
         return false;
