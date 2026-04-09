@@ -66,6 +66,7 @@ typedef enum {
 /** Custom events sent via ViewDispatcher from ISR/worker callbacks. */
 typedef enum {
     TvRemoteCustomEventSignalReceived = 0,
+    TvRemoteCustomEventBackTimeout,
 } TvRemoteCustomEvent;
 
 /** Opaque app context type. */
@@ -117,7 +118,8 @@ struct TvRemoteApp {
     bool remote_held_long; /**< True once InputTypeLong fires (alt action started). */
 
     /* Back-button double-tap detection */
-    uint32_t last_back_tick; /**< furi_get_tick() of last Back short press. */
+    FuriTimer* back_timer;  /**< One-shot timer for deferred single-tap Back. */
+    bool back_pending;      /**< True while waiting for possible double-tap. */
 };
 
 /** Canonical button names (must match .ir file entries). */

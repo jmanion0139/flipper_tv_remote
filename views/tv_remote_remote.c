@@ -339,6 +339,24 @@ static void tv_remote_ir_burst(TvRemoteApp* app, uint8_t button_index) {
     }
 }
 
+/* ---- Custom event callback (handles deferred back-tap timer) ---- */
+
+static bool tv_remote_remote_custom_event_callback(void* context, uint32_t event) {
+    TvRemoteApp* app = context;
+    if(event == TvRemoteCustomEventBackTimeout) {
+        if(app->back_pending) {
+            app->back_pending = false;
+            /* Timer expired – single tap → Back IR */
+            tv_remote_remote_update_model(
+                app, (int8_t)TvButtonBack, false, app->remote_pressed_keys);
+            tv_remote_ir_burst(app, TvButtonBack);
+            tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
+        }
+        return true;
+    }
+    return false;
+}
+
 /* ---- Input callback ---- */
 
 static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
@@ -360,19 +378,21 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
             return false; /* ViewDispatcher handles exit */
         }
         if(event->type == InputTypeShort) {
-            uint32_t now = furi_get_tick();
-            if((now - app->last_back_tick) < furi_ms_to_ticks(DOUBLE_TAP_MS)) {
-                /* Double-tap → Power */
+            if(app->back_pending) {
+                /* Double-tap within window → Power */
+                app->back_pending = false;
+                furi_timer_stop(app->back_timer);
+                tv_remote_remote_update_model(
+                    app, (int8_t)TvButtonPower, false, app->remote_pressed_keys);
                 tv_remote_ir_burst(app, TvButtonPower);
                 app->remote_pressed_keys &= ~KEY_BIT_BACK;
                 tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
-                app->last_back_tick = 0; /* reset so a third tap = Back again */
             } else {
-                /* Single tap → Back IR */
-                tv_remote_ir_burst(app, TvButtonBack);
+                /* First tap – wait for possible double-tap */
+                app->back_pending = true;
                 app->remote_pressed_keys &= ~KEY_BIT_BACK;
                 tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
-                app->last_back_tick = now;
+                furi_timer_start(app->back_timer, furi_ms_to_ticks(DOUBLE_TAP_MS));
             }
             return true;
         }
@@ -440,14 +460,20 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
 static void tv_remote_remote_enter_callback(void* context) {
     TvRemoteApp* app = context;
     app->tx_active = false;
-    app->last_back_tick = 0;
     app->remote_pressed_keys = 0;
     app->remote_held_long = false;
+    app->back_pending = false;
+    furi_timer_stop(app->back_timer);
+    view_dispatcher_set_custom_event_callback(
+        app->view_dispatcher, tv_remote_remote_custom_event_callback);
+    view_dispatcher_set_event_callback_context(app->view_dispatcher, app);
     tv_remote_remote_update_model(app, -1, false, 0);
 }
 
 static void tv_remote_remote_exit_callback(void* context) {
     TvRemoteApp* app = context;
+    furi_timer_stop(app->back_timer);
+    app->back_pending = false;
     tv_remote_tx_stop(app);
 }
 

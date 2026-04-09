@@ -246,6 +246,14 @@ bool tv_remote_app_load(TvRemoteApp* app) {
     return success;
 }
 
+/* ---- Back-button double-tap timer ---- */
+
+static void tv_remote_back_timer_callback(void* context) {
+    TvRemoteApp* app = context;
+    view_dispatcher_send_custom_event(
+        app->view_dispatcher, TvRemoteCustomEventBackTimeout);
+}
+
 /* ---- App lifecycle ---- */
 
 TvRemoteApp* tv_remote_app_alloc(void) {
@@ -270,7 +278,9 @@ TvRemoteApp* tv_remote_app_alloc(void) {
     app->tx_active = false;
     app->remote_pressed_keys = 0;
     app->remote_held_long = false;
-    app->last_back_tick = 0;
+    app->back_pending = false;
+    app->back_timer = furi_timer_alloc(
+        tv_remote_back_timer_callback, FuriTimerTypeOnce, app);
 
     /* ViewDispatcher */
     app->view_dispatcher = view_dispatcher_alloc();
@@ -312,6 +322,10 @@ void tv_remote_app_free(TvRemoteApp* app) {
         infrared_worker_free(app->worker);
         app->worker = NULL;
     }
+
+    /* Stop back-tap timer */
+    furi_timer_stop(app->back_timer);
+    furi_timer_free(app->back_timer);
 
     /* Remove and free views */
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewMainMenu);
