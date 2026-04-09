@@ -78,7 +78,26 @@ typedef struct {
     int8_t active_button;  /**< TvButton index being sent (-1 = idle). */
     bool active_is_hold;   /**< True when the hold action is active. */
     bool learned[TV_BUTTON_COUNT]; /**< Snapshot – which buttons have signals. */
+    uint8_t pressed_keys;  /**< Bitmask of physically held d-pad/ok keys. */
 } TvRemoteRemoteModel;
+
+/* Bitmask bits for pressed_keys */
+#define KEY_BIT_UP    (1u << 0)
+#define KEY_BIT_DOWN  (1u << 1)
+#define KEY_BIT_LEFT  (1u << 2)
+#define KEY_BIT_RIGHT (1u << 3)
+#define KEY_BIT_OK    (1u << 4)
+
+static inline uint8_t key_to_bit(InputKey k) {
+    switch(k) {
+    case InputKeyUp:    return KEY_BIT_UP;
+    case InputKeyDown:  return KEY_BIT_DOWN;
+    case InputKeyLeft:  return KEY_BIT_LEFT;
+    case InputKeyRight: return KEY_BIT_RIGHT;
+    case InputKeyOk:    return KEY_BIT_OK;
+    default:            return 0;
+    }
+}
 
 /* ---- IR worker TX callback ---- */
 
@@ -142,8 +161,11 @@ static void tv_remote_tx_stop(TvRemoteApp* app) {
 
 /* ---- Draw callback ---- */
 
-/** Map hold actions back to their physical key for highlight purposes. */
+/** True when the key should be drawn filled (sending IR or physically held). */
 static inline bool is_dir_active(const TvRemoteRemoteModel* m, InputKey dir) {
+    /* Physical hold check */
+    if(m->pressed_keys & key_to_bit(dir)) return true;
+    /* IR-sending check (covers hold actions mapped back to the physical key) */
     int8_t b = m->active_button;
     switch(dir) {
     case InputKeyUp:    return b == (int8_t)TvButtonUp    || b == (int8_t)TvButtonVolUp;
@@ -243,14 +265,19 @@ static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
     const int label_y = 92;
     const int hint_y  = 105;
 
-    // Back icon: small left-pointing filled triangle above "Back"
-    canvas_draw_triangle(canvas, 5, icon_y + 3, 6, 5, CanvasDirectionRightToLeft);
-    // x2 above "Power"
-    canvas_draw_str_aligned(canvas, DISP_W - 4, icon_y, AlignRight, AlignTop, "x2");
+    // Inset x-centres for Back (left) and Power (right) labels
+    const int back_cx  = 14;
+    const int power_cx = DISP_W - 15;
+
+    // Back icon: small left-pointing filled triangle, centred over "Back"
+    // canvas_draw_triangle tip x, tip y, base, height, dir
+    canvas_draw_triangle(canvas, back_cx - 2, icon_y + 3, 6, 5, CanvasDirectionRightToLeft);
+    // x2 above "Power", centred over it
+    canvas_draw_str_aligned(canvas, power_cx, icon_y, AlignCenter, AlignTop, "x2");
 
     // Labels
-    canvas_draw_str_aligned(canvas, 4, label_y, AlignLeft, AlignTop, "Back");
-    canvas_draw_str_aligned(canvas, DISP_W - 4, label_y, AlignRight, AlignTop, "Power");
+    canvas_draw_str_aligned(canvas, back_cx, label_y, AlignCenter, AlignTop, "Back");
+    canvas_draw_str_aligned(canvas, power_cx, label_y, AlignCenter, AlignTop, "Power");
 
     // Hint
     canvas_draw_str_aligned(canvas, DISP_W / 2, hint_y, AlignCenter, AlignTop, "Hold for alt");
@@ -258,13 +285,15 @@ static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
 
 /* ---- Helper: update model from app state ---- */
 
-static void tv_remote_remote_update_model(TvRemoteApp* app, int8_t active, bool is_hold) {
+static void tv_remote_remote_update_model(
+    TvRemoteApp* app, int8_t active, bool is_hold, uint8_t pressed_keys) {
     with_view_model(
         app->remote_view,
         TvRemoteRemoteModel * model,
         {
             model->active_button = active;
             model->active_is_hold = is_hold;
+            model->pressed_keys = pressed_keys;
             for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
                 model->learned[i] = app->buttons[i].learned;
             }
@@ -296,7 +325,7 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
         if(event->type == InputTypeLong) {
             /* Hold back = exit: stop any active TX, let ViewDispatcher navigate */
             tv_remote_tx_stop(app);
-            tv_remote_remote_update_model(app, -1, false);
+            tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
             return false; /* ViewDispatcher handles exit */
         }
         if(event->type == InputTypeShort) {
@@ -304,12 +333,12 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
             if((now - app->last_back_tick) < furi_ms_to_ticks(DOUBLE_TAP_MS)) {
                 /* Double-tap → Power */
                 tv_remote_ir_burst(app, TvButtonPower);
-                tv_remote_remote_update_model(app, -1, false);
+                tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
                 app->last_back_tick = 0; /* reset so a third tap = Back again */
             } else {
                 /* Single tap → Back IR */
                 tv_remote_ir_burst(app, TvButtonBack);
-                tv_remote_remote_update_model(app, -1, false);
+                tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
                 app->last_back_tick = now;
             }
             return true;
@@ -335,8 +364,9 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
 
     if(event->type == InputTypePress) {
         /* Start sending the press action */
+        app->remote_pressed_keys |= key_to_bit(event->key);
         tv_remote_tx_start(app, map->press_btn);
-        tv_remote_remote_update_model(app, (int8_t)map->press_btn, false);
+        tv_remote_remote_update_model(app, (int8_t)map->press_btn, false, app->remote_pressed_keys);
         return true;
     }
 
@@ -344,13 +374,14 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
         /* Switch to hold action */
         tv_remote_tx_stop(app);
         tv_remote_tx_start(app, map->hold_btn);
-        tv_remote_remote_update_model(app, (int8_t)map->hold_btn, true);
+        tv_remote_remote_update_model(app, (int8_t)map->hold_btn, true, app->remote_pressed_keys);
         return true;
     }
 
     if(event->type == InputTypeRelease) {
+        app->remote_pressed_keys &= ~key_to_bit(event->key);
         tv_remote_tx_stop(app);
-        tv_remote_remote_update_model(app, -1, false);
+        tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
         return true;
     }
 
@@ -368,7 +399,8 @@ static void tv_remote_remote_enter_callback(void* context) {
     TvRemoteApp* app = context;
     app->tx_active = false;
     app->last_back_tick = 0;
-    tv_remote_remote_update_model(app, -1, false);
+    app->remote_pressed_keys = 0;
+    tv_remote_remote_update_model(app, -1, false, 0);
 }
 
 static void tv_remote_remote_exit_callback(void* context) {
