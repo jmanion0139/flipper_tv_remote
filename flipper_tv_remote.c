@@ -366,15 +366,6 @@ static void tv_remote_learn_menu_callback(void* context, uint32_t index) {
     case LearnMenuNew:
         /* Open text input to name the new remote */
         app->text_input_buf[0] = '\0';
-        text_input_set_header_text(app->text_input, "Remote name:");
-        text_input_set_result_callback(
-            app->text_input,
-            /* confirm callback */
-            NULL, /* set after alloc – see app_alloc */
-            app,
-            app->text_input_buf,
-            TV_REMOTE_NAME_MAX,
-            true);
         view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewTextInput);
         break;
     case LearnMenuUpdate:
