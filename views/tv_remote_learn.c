@@ -56,6 +56,7 @@ typedef struct {
     /* Decoded signal info shown to the user. */
     char info_line1[32];
     char info_line2[32];
+    char remote_name[TV_REMOTE_NAME_MAX + 1]; /**< Name of remote being learned. */
 } TvRemoteLearnModel;
 
 /* ---- IR worker callback (called from worker thread) ---- */
@@ -175,7 +176,9 @@ static void tv_remote_learn_draw_callback(Canvas* canvas, void* model_void) {
     if(model->state == LearnStateDone) {
         canvas_draw_str_aligned(canvas, 64, 10, AlignCenter, AlignTop, "Learning complete!");
         canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str_aligned(canvas, 64, 28, AlignCenter, AlignTop, "All buttons saved.");
+        char saved_line[TV_REMOTE_NAME_MAX + 8];
+        snprintf(saved_line, sizeof(saved_line), "Saved: %s", model->remote_name);
+        canvas_draw_str_aligned(canvas, 64, 28, AlignCenter, AlignTop, saved_line);
         canvas_draw_str_aligned(canvas, 64, 42, AlignCenter, AlignTop, "[Back] to return");
         return;
     }
@@ -229,6 +232,7 @@ static void tv_remote_learn_draw_callback(Canvas* canvas, void* model_void) {
 static void learn_advance(TvRemoteApp* app) {
     app->learn_index++;
     if(app->learn_index >= TV_LEARN_COUNT) {
+        tv_remote_app_save_named(app, app->current_remote_name);
         tv_remote_learn_stop_rx(app);
         with_view_model(
             app->learn_view,
@@ -326,6 +330,8 @@ static void tv_remote_learn_enter_callback(void* context) {
             model->state = LearnStateWaiting;
             model->learn_step = 0;
             model->button_index = learn_sequence[0];
+            strncpy(model->remote_name, app->current_remote_name, TV_REMOTE_NAME_MAX);
+            model->remote_name[TV_REMOTE_NAME_MAX] = '\0';
         },
         true);
 
@@ -363,6 +369,7 @@ View* tv_remote_learn_view_alloc(TvRemoteApp* app) {
             model->signal_is_parsed = false;
             model->info_line1[0] = '\0';
             model->info_line2[0] = '\0';
+            model->remote_name[0] = '\0';
         },
         true);
 

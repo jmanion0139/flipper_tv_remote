@@ -7,6 +7,9 @@
 #include "views/tv_remote_learn.h"
 #include "views/tv_remote_remote.h"
 
+#include <string.h>
+#include <stdlib.h>
+
 /* ---- Button name table ---- */
 
 const char* const tv_remote_button_names[TV_BUTTON_COUNT] = {
@@ -26,55 +29,39 @@ const char* const tv_remote_button_names[TV_BUTTON_COUNT] = {
     "Play_pause",
 };
 
-/* ---- Main menu callbacks ---- */
+/* ---- File I/O helpers ---- */
 
-static void tv_remote_main_menu_callback(void* context, uint32_t index) {
-    TvRemoteApp* app = context;
-    switch(index) {
-    case TvRemoteMenuLearn:
-        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewLearn);
-        break;
-    case TvRemoteMenuUse:
-        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewRemote);
-        break;
-    default:
-        break;
+void tv_remote_app_clear_buttons(TvRemoteApp* app) {
+    for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
+        if(app->buttons[i].signal.timings) {
+            free(app->buttons[i].signal.timings);
+            app->buttons[i].signal.timings = NULL;
+        }
+        memset(&app->buttons[i].signal, 0, sizeof(TvRemoteIrSignal));
+        app->buttons[i].learned = false;
     }
 }
 
-static uint32_t tv_remote_exit_callback(void* context) {
-    UNUSED(context);
-    return VIEW_NONE;
+void tv_remote_build_path(FuriString* out, const char* name) {
+    furi_string_printf(out, "%s/" TV_REMOTE_FILE_PREFIX "%s.ir", TV_REMOTE_FILE_DIR, name);
 }
 
-static uint32_t tv_remote_back_to_menu_callback(void* context) {
-    UNUSED(context);
-    return TvRemoteViewMainMenu;
-}
-
-/* ---- File I/O ---- */
-
-bool tv_remote_app_save(TvRemoteApp* app) {
-    /* Skip save if no buttons have been learned to avoid overwriting a valid file. */
+bool tv_remote_app_save_named(TvRemoteApp* app, const char* name) {
     bool any_learned = false;
     for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
-        if(app->buttons[i].learned) {
-            any_learned = true;
-            break;
-        }
+        if(app->buttons[i].learned) { any_learned = true; break; }
     }
-    if(!any_learned) {
-        FURI_LOG_I(TV_REMOTE_APP_TAG, "No buttons learned – skipping save");
-        return true;
-    }
+    if(!any_learned) return true;
 
     Storage* storage = furi_record_open(RECORD_STORAGE);
     storage_simply_mkdir(storage, TV_REMOTE_FILE_DIR);
     FlipperFormat* ff = flipper_format_file_alloc(storage);
+    FuriString* path = furi_string_alloc();
+    tv_remote_build_path(path, name);
 
     bool success = false;
     do {
-        if(!flipper_format_file_open_always(ff, TV_REMOTE_FILE_PATH)) break;
+        if(!flipper_format_file_open_always(ff, furi_string_get_cstr(path))) break;
         if(!flipper_format_write_header_cstr(ff, TV_REMOTE_FILE_HEADER, TV_REMOTE_FILE_VERSION))
             break;
 
@@ -83,75 +70,62 @@ bool tv_remote_app_save(TvRemoteApp* app) {
             if(!app->buttons[i].learned) continue;
             TvRemoteIrSignal* sig = &app->buttons[i].signal;
 
-            if(!flipper_format_write_comment_cstr(ff, "")) break;
+            if(!flipper_format_write_comment_cstr(ff, "")) { success = false; break; }
             if(!flipper_format_write_string_cstr(ff, "name", tv_remote_button_names[i])) {
-                success = false;
-                break;
+                success = false; break;
             }
             if(sig->is_raw) {
                 if(!flipper_format_write_string_cstr(ff, "type", "raw")) {
-                    success = false;
-                    break;
+                    success = false; break;
                 }
                 if(!flipper_format_write_uint32(ff, "frequency", &sig->frequency, 1)) {
-                    success = false;
-                    break;
+                    success = false; break;
                 }
                 if(!flipper_format_write_float(ff, "duty_cycle", &sig->duty_cycle, 1)) {
-                    success = false;
-                    break;
+                    success = false; break;
                 }
                 if(!flipper_format_write_uint32(
                        ff, "data", sig->timings, (uint16_t)sig->timings_size)) {
-                    success = false;
-                    break;
+                    success = false; break;
                 }
             } else {
                 if(!flipper_format_write_string_cstr(ff, "type", "parsed")) {
-                    success = false;
-                    break;
+                    success = false; break;
                 }
                 if(!flipper_format_write_string_cstr(
-                       ff,
-                       "protocol",
+                       ff, "protocol",
                        infrared_get_protocol_name(sig->message.protocol))) {
-                    success = false;
-                    break;
+                    success = false; break;
                 }
                 if(!flipper_format_write_hex(
-                       ff,
-                       "address",
-                       (const uint8_t*)&sig->message.address,
-                       4)) {
-                    success = false;
-                    break;
+                       ff, "address", (const uint8_t*)&sig->message.address, 4)) {
+                    success = false; break;
                 }
                 if(!flipper_format_write_hex(
-                       ff,
-                       "command",
-                       (const uint8_t*)&sig->message.command,
-                       4)) {
-                    success = false;
-                    break;
+                       ff, "command", (const uint8_t*)&sig->message.command, 4)) {
+                    success = false; break;
                 }
             }
         }
     } while(false);
 
+    furi_string_free(path);
     flipper_format_free(ff);
     furi_record_close(RECORD_STORAGE);
     return success;
 }
 
-bool tv_remote_app_load(TvRemoteApp* app) {
+bool tv_remote_app_load_named(TvRemoteApp* app, const char* name) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     FlipperFormat* ff = flipper_format_buffered_file_alloc(storage);
-    FuriString* name = furi_string_alloc();
+    FuriString* path = furi_string_alloc();
+    tv_remote_build_path(path, name);
+    FuriString* str_name = furi_string_alloc();
     FuriString* type_str = furi_string_alloc();
 
     bool success = false;
     do {
-        if(!flipper_format_buffered_file_open_existing(ff, TV_REMOTE_FILE_PATH)) break;
+        if(!flipper_format_buffered_file_open_existing(ff, furi_string_get_cstr(path))) break;
 
         FuriString* header = furi_string_alloc();
         uint32_t version = 0;
@@ -161,14 +135,12 @@ bool tv_remote_app_load(TvRemoteApp* app) {
         }
         furi_string_free(header);
 
-        /* Read signals until we can't read any more names. */
-        while(flipper_format_read_string(ff, "name", name)) {
+        while(flipper_format_read_string(ff, "name", str_name)) {
             if(!flipper_format_read_string(ff, "type", type_str)) break;
 
-            const char* name_cstr = furi_string_get_cstr(name);
+            const char* name_cstr = furi_string_get_cstr(str_name);
             const char* type_cstr = furi_string_get_cstr(type_str);
 
-            /* Find matching button */
             int btn_idx = -1;
             for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
                 if(strcmp(name_cstr, tv_remote_button_names[i]) == 0) {
@@ -189,10 +161,8 @@ bool tv_remote_app_load(TvRemoteApp* app) {
 
                 uint32_t* timings = malloc(sizeof(uint32_t) * timings_count);
                 if(!flipper_format_read_uint32(ff, "data", timings, (uint16_t)timings_count)) {
-                    free(timings);
-                    break;
+                    free(timings); break;
                 }
-
                 if(btn_idx >= 0) {
                     TvRemoteIrSignal* sig = &app->buttons[btn_idx].signal;
                     if(sig->timings) free(sig->timings);
@@ -208,21 +178,15 @@ bool tv_remote_app_load(TvRemoteApp* app) {
             } else if(strcmp(type_cstr, "parsed") == 0) {
                 FuriString* protocol_str = furi_string_alloc();
                 if(!flipper_format_read_string(ff, "protocol", protocol_str)) {
-                    furi_string_free(protocol_str);
-                    break;
+                    furi_string_free(protocol_str); break;
                 }
-
-                uint32_t address = 0;
-                uint32_t command = 0;
+                uint32_t address = 0, command = 0;
                 if(!flipper_format_read_hex(ff, "address", (uint8_t*)&address, 4)) {
-                    furi_string_free(protocol_str);
-                    break;
+                    furi_string_free(protocol_str); break;
                 }
                 if(!flipper_format_read_hex(ff, "command", (uint8_t*)&command, 4)) {
-                    furi_string_free(protocol_str);
-                    break;
+                    furi_string_free(protocol_str); break;
                 }
-
                 if(btn_idx >= 0) {
                     TvRemoteIrSignal* sig = &app->buttons[btn_idx].signal;
                     sig->is_raw = false;
@@ -239,11 +203,241 @@ bool tv_remote_app_load(TvRemoteApp* app) {
         success = true;
     } while(false);
 
+    furi_string_free(path);
     furi_string_free(type_str);
-    furi_string_free(name);
+    furi_string_free(str_name);
     flipper_format_free(ff);
     furi_record_close(RECORD_STORAGE);
     return success;
+}
+
+void tv_remote_scan_remotes(TvRemoteApp* app) {
+    tv_remote_free_remote_names(app);
+
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* dir = storage_file_alloc(storage);
+    const char* dir_path = TV_REMOTE_FILE_DIR;
+    const size_t prefix_len = strlen(TV_REMOTE_FILE_PREFIX);
+
+    if(storage_dir_open(dir, dir_path)) {
+        FileInfo fi;
+        char fname[128];
+        while(storage_dir_read(dir, &fi, fname, sizeof(fname))) {
+            if(file_info_is_dir(&fi)) continue;
+            /* Match tv_remote_*.ir */
+            size_t flen = strlen(fname);
+            if(flen <= prefix_len + 3) continue; /* too short */
+            if(strncmp(fname, TV_REMOTE_FILE_PREFIX, prefix_len) != 0) continue;
+            if(strcmp(fname + flen - 3, ".ir") != 0) continue;
+
+            /* Extract name between prefix and ".ir" */
+            size_t name_len = flen - prefix_len - 3;
+            if(name_len == 0 || name_len > TV_REMOTE_NAME_MAX) continue;
+
+            char* n = malloc(name_len + 1);
+            memcpy(n, fname + prefix_len, name_len);
+            n[name_len] = '\0';
+
+            char** new_names = realloc(app->remote_names, (app->remote_count + 1) * sizeof(char*));
+            if(!new_names) { free(n); break; }
+            app->remote_names = new_names;
+            app->remote_names[app->remote_count++] = n;
+        }
+        storage_dir_close(dir);
+    }
+    storage_file_free(dir);
+    furi_record_close(RECORD_STORAGE);
+}
+
+void tv_remote_free_remote_names(TvRemoteApp* app) {
+    for(size_t i = 0; i < app->remote_count; i++) {
+        free(app->remote_names[i]);
+    }
+    free(app->remote_names);
+    app->remote_names = NULL;
+    app->remote_count = 0;
+}
+
+bool tv_remote_delete_remote(TvRemoteApp* app, const char* name) {
+    UNUSED(app);
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    FuriString* path = furi_string_alloc();
+    tv_remote_build_path(path, name);
+    bool ok = storage_simply_remove(storage, furi_string_get_cstr(path));
+    furi_string_free(path);
+    furi_record_close(RECORD_STORAGE);
+    return ok;
+}
+
+/* ---- Navigation callbacks ---- */
+
+static uint32_t tv_remote_exit_callback(void* context) {
+    UNUSED(context);
+    return VIEW_NONE;
+}
+
+static uint32_t tv_remote_back_to_menu_callback(void* context) {
+    UNUSED(context);
+    return TvRemoteViewMainMenu;
+}
+
+static uint32_t tv_remote_back_to_learn_menu_callback(void* context) {
+    UNUSED(context);
+    return TvRemoteViewLearnMenu;
+}
+
+/* ---- Select Remote view (dynamic submenu) ---- */
+
+#define SELECT_CANCEL_INDEX 0xFFFFFFFFu
+
+static void tv_remote_select_submenu_callback(void* context, uint32_t index) {
+    TvRemoteApp* app = context;
+    if(index == SELECT_CANCEL_INDEX) {
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewMainMenu);
+        return;
+    }
+    if(index >= app->remote_count) return;
+    const char* chosen = app->remote_names[index];
+
+    switch(app->select_mode) {
+    case TvRemoteSelectModeUse:
+        tv_remote_app_clear_buttons(app);
+        tv_remote_app_load_named(app, chosen);
+        strncpy(app->current_remote_name, chosen, TV_REMOTE_NAME_MAX);
+        app->current_remote_name[TV_REMOTE_NAME_MAX] = '\0';
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewRemote);
+        break;
+    case TvRemoteSelectModeOverwrite:
+        strncpy(app->current_remote_name, chosen, TV_REMOTE_NAME_MAX);
+        app->current_remote_name[TV_REMOTE_NAME_MAX] = '\0';
+        tv_remote_app_clear_buttons(app);
+        app->learn_index = 0;
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewLearn);
+        break;
+    case TvRemoteSelectModeDelete:
+        tv_remote_delete_remote(app, chosen);
+        notification_message(app->notifications, &sequence_success);
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewMainMenu);
+        break;
+    }
+}
+
+static void tv_remote_select_enter_callback(void* context) {
+    TvRemoteApp* app = context;
+    tv_remote_scan_remotes(app);
+    submenu_reset(app->select_submenu);
+
+    if(app->remote_count == 0) {
+        /* No remotes – go straight back to main menu */
+        notification_message(app->notifications, &sequence_error);
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewMainMenu);
+        return;
+    }
+
+    for(size_t i = 0; i < app->remote_count; i++) {
+        submenu_add_item(
+            app->select_submenu,
+            app->remote_names[i],
+            (uint32_t)i,
+            tv_remote_select_submenu_callback,
+            app);
+    }
+    submenu_add_item(
+        app->select_submenu, "Cancel", SELECT_CANCEL_INDEX,
+        tv_remote_select_submenu_callback, app);
+}
+
+static void tv_remote_select_exit_callback(void* context) {
+    TvRemoteApp* app = context;
+    tv_remote_free_remote_names(app);
+    submenu_reset(app->select_submenu);
+}
+
+/* ---- Learn Menu view ---- */
+
+typedef enum {
+    LearnMenuNew = 0,
+    LearnMenuUpdate,
+} LearnMenuIndex;
+
+static void tv_remote_learn_menu_callback(void* context, uint32_t index) {
+    TvRemoteApp* app = context;
+    switch(index) {
+    case LearnMenuNew:
+        /* Open text input to name the new remote */
+        app->text_input_buf[0] = '\0';
+        text_input_set_header_text(app->text_input, "Remote name:");
+        text_input_set_result_callback(
+            app->text_input,
+            /* confirm callback */
+            NULL, /* set after alloc – see app_alloc */
+            app,
+            app->text_input_buf,
+            TV_REMOTE_NAME_MAX,
+            true);
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewTextInput);
+        break;
+    case LearnMenuUpdate:
+        app->select_mode = TvRemoteSelectModeOverwrite;
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewSelectRemote);
+        break;
+    default:
+        break;
+    }
+}
+
+/* ---- TextInput confirm callback ---- */
+
+static void tv_remote_text_input_callback(void* context) {
+    TvRemoteApp* app = context;
+
+    /* Sanitise: keep only alphanumeric and underscore */
+    char* src = app->text_input_buf;
+    char* dst = app->current_remote_name;
+    size_t out_len = 0;
+    for(; *src && out_len < TV_REMOTE_NAME_MAX; src++) {
+        char c = *src;
+        if((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+           (c >= '0' && c <= '9') || c == '_') {
+            *dst++ = c;
+            out_len++;
+        } else if(c == ' ') {
+            *dst++ = '_';
+            out_len++;
+        }
+    }
+    *dst = '\0';
+
+    if(out_len == 0) {
+        /* Empty name – go back */
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewLearnMenu);
+        return;
+    }
+
+    tv_remote_app_clear_buttons(app);
+    app->learn_index = 0;
+    view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewLearn);
+}
+
+/* ---- Main menu callback ---- */
+
+static void tv_remote_main_menu_callback(void* context, uint32_t index) {
+    TvRemoteApp* app = context;
+    switch(index) {
+    case TvRemoteMenuLearn:
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewLearnMenu);
+        break;
+    case TvRemoteMenuUse:
+        app->select_mode = TvRemoteSelectModeUse;
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewSelectRemote);
+        break;
+    case TvRemoteMenuDelete:
+        app->select_mode = TvRemoteSelectModeDelete;
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewSelectRemote);
+        break;
+    default:
+        break;
+    }
 }
 
 /* ---- Back-button double-tap timer ---- */
@@ -258,50 +452,77 @@ static void tv_remote_back_timer_callback(void* context) {
 
 TvRemoteApp* tv_remote_app_alloc(void) {
     TvRemoteApp* app = malloc(sizeof(TvRemoteApp));
+    memset(app, 0, sizeof(TvRemoteApp));
 
-    /* Open system records */
     app->gui = furi_record_open(RECORD_GUI);
     app->notifications = furi_record_open(RECORD_NOTIFICATION);
 
-    /* Initialise button storage */
     for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
         app->buttons[i].name = tv_remote_button_names[i];
-        memset(&app->buttons[i].signal, 0, sizeof(TvRemoteIrSignal));
-        app->buttons[i].learned = false;
     }
 
-    app->learn_index = 0;
-    app->learn_signal_received = false;
     app->worker = NULL;
     app->worker_active = false;
     app->remote_selected = 0;
     app->tx_active = false;
-    app->remote_pressed_keys = 0;
-    app->remote_held_long = false;
     app->back_pending = false;
-    app->back_timer = furi_timer_alloc(
-        tv_remote_back_timer_callback, FuriTimerTypeOnce, app);
+    app->back_timer = furi_timer_alloc(tv_remote_back_timer_callback, FuriTimerTypeOnce, app);
 
     /* ViewDispatcher */
     app->view_dispatcher = view_dispatcher_alloc();
     view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
 
-    /* Main menu */
+    /* ── Main menu ── */
     app->main_menu = submenu_alloc();
     submenu_add_item(
         app->main_menu, "Learn Remote", TvRemoteMenuLearn, tv_remote_main_menu_callback, app);
     submenu_add_item(
         app->main_menu, "Use Remote", TvRemoteMenuUse, tv_remote_main_menu_callback, app);
+    submenu_add_item(
+        app->main_menu, "Delete Remote", TvRemoteMenuDelete, tv_remote_main_menu_callback, app);
     View* main_menu_view = submenu_get_view(app->main_menu);
     view_set_previous_callback(main_menu_view, tv_remote_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewMainMenu, main_menu_view);
 
-    /* Learn view */
+    /* ── Learn menu ── */
+    app->learn_menu = submenu_alloc();
+    submenu_add_item(
+        app->learn_menu, "New Remote", LearnMenuNew, tv_remote_learn_menu_callback, app);
+    submenu_add_item(
+        app->learn_menu, "Update Remote", LearnMenuUpdate, tv_remote_learn_menu_callback, app);
+    View* learn_menu_view = submenu_get_view(app->learn_menu);
+    view_set_previous_callback(learn_menu_view, tv_remote_back_to_menu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewLearnMenu, learn_menu_view);
+
+    /* ── Select Remote submenu ── */
+    app->select_submenu = submenu_alloc();
+    View* select_view = submenu_get_view(app->select_submenu);
+    view_set_context(select_view, app);
+    view_set_enter_callback(select_view, tv_remote_select_enter_callback);
+    view_set_exit_callback(select_view, tv_remote_select_exit_callback);
+    view_set_previous_callback(select_view, tv_remote_back_to_menu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewSelectRemote, select_view);
+
+    /* ── TextInput ── */
+    app->text_input = text_input_alloc();
+    text_input_set_header_text(app->text_input, "Remote name:");
+    text_input_set_result_callback(
+        app->text_input,
+        tv_remote_text_input_callback,
+        app,
+        app->text_input_buf,
+        TV_REMOTE_NAME_MAX,
+        true);
+    View* text_input_view = text_input_get_view(app->text_input);
+    view_set_previous_callback(text_input_view, tv_remote_back_to_learn_menu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewTextInput, text_input_view);
+
+    /* ── Learn view ── */
     app->learn_view = tv_remote_learn_view_alloc(app);
     view_set_previous_callback(app->learn_view, tv_remote_back_to_menu_callback);
     view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewLearn, app->learn_view);
 
-    /* Remote view */
+    /* ── Remote view ── */
     app->remote_view = tv_remote_remote_view_alloc(app);
     view_set_previous_callback(app->remote_view, tv_remote_back_to_menu_callback);
     view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewRemote, app->remote_view);
@@ -312,7 +533,6 @@ TvRemoteApp* tv_remote_app_alloc(void) {
 void tv_remote_app_free(TvRemoteApp* app) {
     furi_assert(app);
 
-    /* Stop any active worker */
     if(app->worker_active && app->worker != NULL) {
         if(app->tx_active) {
             infrared_worker_tx_stop(app->worker);
@@ -323,27 +543,27 @@ void tv_remote_app_free(TvRemoteApp* app) {
         app->worker = NULL;
     }
 
-    /* Stop back-tap timer */
     furi_timer_stop(app->back_timer);
     furi_timer_free(app->back_timer);
 
-    /* Remove and free views */
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewMainMenu);
+    view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewLearnMenu);
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewLearn);
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewRemote);
+    view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewSelectRemote);
+    view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewTextInput);
 
     submenu_free(app->main_menu);
+    submenu_free(app->learn_menu);
+    submenu_free(app->select_submenu);
+    text_input_free(app->text_input);
     tv_remote_learn_view_free(app->learn_view);
     tv_remote_remote_view_free(app->remote_view);
 
     view_dispatcher_free(app->view_dispatcher);
 
-    /* Free button signal timings */
-    for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
-        if(app->buttons[i].signal.timings) {
-            free(app->buttons[i].signal.timings);
-        }
-    }
+    tv_remote_app_clear_buttons(app);
+    tv_remote_free_remote_names(app);
 
     furi_record_close(RECORD_GUI);
     furi_record_close(RECORD_NOTIFICATION);
@@ -358,14 +578,8 @@ int32_t flipper_tv_remote_app(void* p) {
 
     TvRemoteApp* app = tv_remote_app_alloc();
 
-    /* Try to load any previously saved remote */
-    tv_remote_app_load(app);
-
     view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewMainMenu);
     view_dispatcher_run(app->view_dispatcher);
-
-    /* Save on exit so learned signals are persisted */
-    tv_remote_app_save(app);
 
     tv_remote_app_free(app);
     FURI_LOG_I(TV_REMOTE_APP_TAG, "TV Remote app stopped");

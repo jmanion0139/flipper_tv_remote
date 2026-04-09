@@ -15,6 +15,7 @@
 #include <gui/view_dispatcher.h>
 #include <gui/modules/submenu.h>
 #include <gui/modules/popup.h>
+#include <gui/modules/text_input.h>
 #include <input/input.h>
 #include <infrared_worker.h>
 #include <infrared.h>
@@ -23,11 +24,12 @@
 #include <storage/storage.h>
 #include <flipper_format/flipper_format.h>
 
-#define TV_REMOTE_APP_TAG "TvRemote"
-#define TV_REMOTE_FILE_HEADER "IR signals file"
+#define TV_REMOTE_APP_TAG      "TvRemote"
+#define TV_REMOTE_FILE_HEADER  "IR signals file"
 #define TV_REMOTE_FILE_VERSION 1
-#define TV_REMOTE_FILE_DIR ANY_PATH("infrared")
-#define TV_REMOTE_FILE_PATH ANY_PATH("infrared/TV_Remote.ir")
+#define TV_REMOTE_FILE_DIR     ANY_PATH("infrared")
+#define TV_REMOTE_FILE_PREFIX  "tv_remote_"
+#define TV_REMOTE_NAME_MAX     24
 
 /** Number of buttons the app can learn and replay. */
 #define TV_BUTTON_COUNT 14
@@ -53,15 +55,26 @@ typedef enum {
 /** View identifiers used with the ViewDispatcher. */
 typedef enum {
     TvRemoteViewMainMenu = 0,
+    TvRemoteViewLearnMenu,
     TvRemoteViewLearn,
     TvRemoteViewRemote,
+    TvRemoteViewSelectRemote,
+    TvRemoteViewTextInput,
 } TvRemoteViewId;
 
 /** Main menu item indices. */
 typedef enum {
     TvRemoteMenuLearn = 0,
     TvRemoteMenuUse,
+    TvRemoteMenuDelete,
 } TvRemoteMenuItem;
+
+/** What action to perform when a remote is selected in the picker. */
+typedef enum {
+    TvRemoteSelectModeUse = 0,
+    TvRemoteSelectModeOverwrite,
+    TvRemoteSelectModeDelete,
+} TvRemoteSelectMode;
 
 /** Custom events sent via ViewDispatcher from ISR/worker callbacks. */
 typedef enum {
@@ -97,6 +110,9 @@ struct TvRemoteApp {
 
     /* Views */
     Submenu* main_menu;
+    Submenu* learn_menu;
+    Submenu* select_submenu;
+    TextInput* text_input;
     View* learn_view;
     View* remote_view;
 
@@ -104,8 +120,15 @@ struct TvRemoteApp {
     TvRemoteButton buttons[TV_BUTTON_COUNT];
 
     /* Learning state */
-    uint8_t learn_index; /**< Index of the button currently being learned. */
+    uint8_t learn_index;        /**< Index of the button currently being learned. */
     bool learn_signal_received; /**< Set when IR callback fires during learn. */
+
+    /* Remote naming & selection */
+    char current_remote_name[TV_REMOTE_NAME_MAX + 1]; /**< Name of the active remote. */
+    char text_input_buf[TV_REMOTE_NAME_MAX + 1];      /**< Working buffer for TextInput. */
+    TvRemoteSelectMode select_mode;
+    char** remote_names; /**< Heap array of scanned remote name strings. */
+    size_t remote_count;
 
     /* IR worker */
     InfraredWorker* worker;
@@ -130,8 +153,13 @@ TvRemoteApp* tv_remote_app_alloc(void);
 void tv_remote_app_free(TvRemoteApp* app);
 
 /* ---- File I/O ---- */
-bool tv_remote_app_save(TvRemoteApp* app);
-bool tv_remote_app_load(TvRemoteApp* app);
+void tv_remote_app_clear_buttons(TvRemoteApp* app);
+void tv_remote_build_path(FuriString* out, const char* name);
+bool tv_remote_app_save_named(TvRemoteApp* app, const char* name);
+bool tv_remote_app_load_named(TvRemoteApp* app, const char* name);
+void tv_remote_scan_remotes(TvRemoteApp* app);
+void tv_remote_free_remote_names(TvRemoteApp* app);
+bool tv_remote_delete_remote(TvRemoteApp* app, const char* name);
 
 /* ---- Entry point ---- */
 int32_t flipper_tv_remote_app(void* p);
