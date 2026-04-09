@@ -435,6 +435,9 @@ static void tv_remote_main_menu_callback(void* context, uint32_t index) {
     case TvRemoteMenuButtonMap:
         view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewButtonMap);
         break;
+    case TvRemoteMenuAbout:
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewAbout);
+        break;
     default:
         break;
     }
@@ -537,6 +540,28 @@ static View* tv_remote_bmap_view_alloc(TvRemoteApp* app) {
     return view;
 }
 
+/* ---- About view ---- */
+
+static void tv_remote_about_draw_callback(Canvas* canvas, void* model_void) {
+    UNUSED(model_void);
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str_aligned(canvas, 64, 2, AlignCenter, AlignTop, "TV Remote");
+    canvas_draw_line(canvas, 0, 13, 127, 13);
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str_aligned(canvas, 64, 17, AlignCenter, AlignTop, "by @jmanion0139");
+    canvas_draw_str_aligned(canvas, 64, 28, AlignCenter, AlignTop, "github.com/jmanion0139");
+    canvas_draw_str_aligned(canvas, 64, 37, AlignCenter, AlignTop, "/flipper_tv_remote");
+    canvas_draw_line(canvas, 0, 49, 127, 49);
+    canvas_draw_str_aligned(canvas, 64, 53, AlignCenter, AlignTop, "License: GPL v3");
+}
+
+static View* tv_remote_about_view_alloc(void) {
+    View* view = view_alloc();
+    view_set_draw_callback(view, tv_remote_about_draw_callback);
+    return view;
+}
+
 /* ---- Back-button double-tap timer ---- */
 
 static void tv_remote_back_timer_callback(void* context) {
@@ -579,6 +604,8 @@ TvRemoteApp* tv_remote_app_alloc(void) {
         app->main_menu, "Delete Remote", TvRemoteMenuDelete, tv_remote_main_menu_callback, app);
     submenu_add_item(
         app->main_menu, "Button Map", TvRemoteMenuButtonMap, tv_remote_main_menu_callback, app);
+    submenu_add_item(
+        app->main_menu, "About", TvRemoteMenuAbout, tv_remote_main_menu_callback, app);
     View* main_menu_view = submenu_get_view(app->main_menu);
     view_set_previous_callback(main_menu_view, tv_remote_exit_callback);
     view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewMainMenu, main_menu_view);
@@ -628,6 +655,11 @@ TvRemoteApp* tv_remote_app_alloc(void) {
     view_set_previous_callback(app->button_map_view, tv_remote_back_to_menu_callback);
     view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewButtonMap, app->button_map_view);
 
+    /* ── About view ── */
+    app->about_view = tv_remote_about_view_alloc();
+    view_set_previous_callback(app->about_view, tv_remote_back_to_menu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewAbout, app->about_view);
+
     return app;
 }
 
@@ -654,6 +686,7 @@ void tv_remote_app_free(TvRemoteApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewSelectRemote);
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewTextInput);
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewButtonMap);
+    view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewAbout);
 
     submenu_free(app->main_menu);
     submenu_free(app->learn_menu);
@@ -662,6 +695,7 @@ void tv_remote_app_free(TvRemoteApp* app) {
     tv_remote_learn_view_free(app->learn_view);
     tv_remote_remote_view_free(app->remote_view);
     view_free(app->button_map_view);
+    view_free(app->about_view);
 
     view_dispatcher_free(app->view_dispatcher);
 
