@@ -466,9 +466,9 @@ static const char* const bmap_lines[] = {
     "Back[Hold]- Exit",
 };
 #define BMAP_LINE_COUNT ((int)(sizeof(bmap_lines) / sizeof(bmap_lines[0])))
-#define BMAP_VISIBLE_ROWS 5
-#define BMAP_ROW_H 12
-#define BMAP_Y0 14
+#define BMAP_VISIBLE_ROWS 4
+#define BMAP_ROW_H 11
+#define BMAP_Y0 20
 
 static void tv_remote_bmap_draw_callback(Canvas* canvas, void* model_void) {
     TvRemoteButtonMapModel* model = model_void;
@@ -484,12 +484,12 @@ static void tv_remote_bmap_draw_callback(Canvas* canvas, void* model_void) {
     }
     /* Scroll indicator */
     if(BMAP_LINE_COUNT > BMAP_VISIBLE_ROWS) {
-        int bar_h = 50;
+        int bar_h = 44;
         int thumb_h = bar_h * BMAP_VISIBLE_ROWS / BMAP_LINE_COUNT;
         if(thumb_h < 4) thumb_h = 4;
         int max_scroll = BMAP_LINE_COUNT - BMAP_VISIBLE_ROWS;
-        int thumb_y = 14 + (bar_h - thumb_h) * top / (max_scroll > 0 ? max_scroll : 1);
-        canvas_draw_line(canvas, 127, 14, 127, 14 + bar_h);
+        int thumb_y = BMAP_Y0 + (bar_h - thumb_h) * top / (max_scroll > 0 ? max_scroll : 1);
+        canvas_draw_line(canvas, 127, BMAP_Y0, 127, BMAP_Y0 + bar_h);
         canvas_draw_box(canvas, 126, thumb_y, 2, thumb_h);
     }
 }
