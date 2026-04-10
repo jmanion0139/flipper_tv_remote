@@ -23,6 +23,7 @@
 #include <notification/notification_messages.h>
 #include <storage/storage.h>
 #include <flipper_format/flipper_format.h>
+#include <lib/toolbox/saved_struct.h>
 
 #define TV_REMOTE_APP_TAG      "TvRemote"
 #define TV_REMOTE_FILE_HEADER  "IR signals file"
@@ -30,6 +31,7 @@
 #define TV_REMOTE_FILE_DIR     ANY_PATH("infrared")
 #define TV_REMOTE_FILE_PREFIX  "tv_remote_"
 #define TV_REMOTE_NAME_MAX     24
+#define TV_REMOTE_SETTINGS_PATH ANY_PATH("tv_remote_settings.dat")
 
 /** Number of buttons the app can learn and replay. */
 #define TV_BUTTON_COUNT 14
@@ -52,6 +54,13 @@ typedef enum {
     TvButtonPlayPause,
 } TvButton;
 
+/** Screen orientation setting. */
+typedef enum {
+    TvRemoteOrientationVertical = 0, /**< Portrait – Flipper held rotated like a remote. */
+    TvRemoteOrientationHorizontal,   /**< Landscape – Flipper held normally. */
+    TvRemoteOrientationCount,
+} TvRemoteOrientation;
+
 /** View identifiers used with the ViewDispatcher. */
 typedef enum {
     TvRemoteViewMainMenu = 0,
@@ -61,6 +70,7 @@ typedef enum {
     TvRemoteViewSelectRemote,
     TvRemoteViewTextInput,
     TvRemoteViewButtonMap,
+    TvRemoteViewSettings,
     TvRemoteViewAbout,
 } TvRemoteViewId;
 
@@ -70,6 +80,7 @@ typedef enum {
     TvRemoteMenuUse,
     TvRemoteMenuDelete,
     TvRemoteMenuButtonMap,
+    TvRemoteMenuSettings,
     TvRemoteMenuAbout,
 } TvRemoteMenuItem;
 
@@ -120,7 +131,11 @@ struct TvRemoteApp {
     View* learn_view;
     View* remote_view;
     View* button_map_view;
+    View* settings_view;
     View* about_view;
+
+    /* Settings */
+    TvRemoteOrientation orientation;
 
     /* Button storage */
     TvRemoteButton buttons[TV_BUTTON_COUNT];

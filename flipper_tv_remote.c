@@ -435,6 +435,9 @@ static void tv_remote_main_menu_callback(void* context, uint32_t index) {
     case TvRemoteMenuButtonMap:
         view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewButtonMap);
         break;
+    case TvRemoteMenuSettings:
+        view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewSettings);
+        break;
     case TvRemoteMenuAbout:
         view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewAbout);
         break;
@@ -562,6 +565,105 @@ static View* tv_remote_about_view_alloc(void) {
     return view;
 }
 
+/* ---- Settings: persistent storage ---- */
+
+typedef struct {
+    uint8_t orientation;
+} TvRemoteSettingsData;
+
+#define TV_REMOTE_SETTINGS_MAGIC   0x54u
+#define TV_REMOTE_SETTINGS_VERSION 1u
+
+static void tv_remote_settings_save(TvRemoteApp* app) {
+    TvRemoteSettingsData d = {.orientation = (uint8_t)app->orientation};
+    saved_struct_save(
+        TV_REMOTE_SETTINGS_PATH, &d, sizeof(d),
+        TV_REMOTE_SETTINGS_MAGIC, TV_REMOTE_SETTINGS_VERSION);
+}
+
+static void tv_remote_settings_load(TvRemoteApp* app) {
+    TvRemoteSettingsData d = {.orientation = TvRemoteOrientationVertical};
+    saved_struct_load(
+        TV_REMOTE_SETTINGS_PATH, &d, sizeof(d),
+        TV_REMOTE_SETTINGS_MAGIC, TV_REMOTE_SETTINGS_VERSION);
+    if(d.orientation < (uint8_t)TvRemoteOrientationCount) {
+        app->orientation = (TvRemoteOrientation)d.orientation;
+    }
+}
+
+static void tv_remote_apply_orientation(TvRemoteApp* app) {
+    view_set_orientation(
+        app->remote_view,
+        app->orientation == TvRemoteOrientationHorizontal ?
+            ViewOrientationHorizontal : ViewOrientationVertical);
+}
+
+/* ---- Settings view ---- */
+
+typedef struct {
+    TvRemoteOrientation orientation;
+} TvRemoteSettingsModel;
+
+static const char* const orient_labels[] = {"Vertical", "Horizontal"};
+
+static void tv_remote_settings_draw_callback(Canvas* canvas, void* model_void) {
+    TvRemoteSettingsModel* model = model_void;
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str_aligned(canvas, 64, 2, AlignCenter, AlignTop, "Settings");
+    canvas_draw_line(canvas, 0, 13, 127, 13);
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str(canvas, 4, 26, "Orientation:");
+    uint8_t idx = (uint8_t)model->orientation;
+    canvas_draw_str_aligned(canvas, 64, 36, AlignCenter, AlignTop, orient_labels[idx]);
+    canvas_draw_str_aligned(canvas, 10, 58, AlignCenter, AlignTop, "<");
+    canvas_draw_str_aligned(canvas, 118, 58, AlignCenter, AlignTop, ">");
+    canvas_draw_str_aligned(canvas, 64, 58, AlignCenter, AlignTop, "Ok / L / R");
+}
+
+static bool tv_remote_settings_input_callback(InputEvent* event, void* context) {
+    TvRemoteApp* app = context;
+    if(event->type != InputTypeShort) return false;
+    if(event->key != InputKeyLeft && event->key != InputKeyRight &&
+       event->key != InputKeyOk)
+        return false;
+    with_view_model(
+        app->settings_view,
+        TvRemoteSettingsModel * model,
+        {
+            model->orientation = (TvRemoteOrientation)(
+                ((uint8_t)model->orientation + 1u) % (uint8_t)TvRemoteOrientationCount);
+            app->orientation = model->orientation;
+        },
+        true);
+    tv_remote_apply_orientation(app);
+    tv_remote_settings_save(app);
+    return true;
+}
+
+static void tv_remote_settings_enter_callback(void* context) {
+    TvRemoteApp* app = context;
+    with_view_model(
+        app->settings_view,
+        TvRemoteSettingsModel * model,
+        {model->orientation = app->orientation;},
+        true);
+}
+
+static View* tv_remote_settings_view_alloc(TvRemoteApp* app) {
+    View* view = view_alloc();
+    view_set_context(view, app);
+    view_allocate_model(view, ViewModelTypeLocking, sizeof(TvRemoteSettingsModel));
+    view_set_draw_callback(view, tv_remote_settings_draw_callback);
+    view_set_input_callback(view, tv_remote_settings_input_callback);
+    view_set_enter_callback(view, tv_remote_settings_enter_callback);
+    with_view_model(
+        view, TvRemoteSettingsModel * model,
+        {model->orientation = TvRemoteOrientationVertical;},
+        true);
+    return view;
+}
+
 /* ---- Back-button double-tap timer ---- */
 
 static void tv_remote_back_timer_callback(void* context) {
@@ -604,6 +706,8 @@ TvRemoteApp* tv_remote_app_alloc(void) {
         app->main_menu, "Delete Remote", TvRemoteMenuDelete, tv_remote_main_menu_callback, app);
     submenu_add_item(
         app->main_menu, "Button Map", TvRemoteMenuButtonMap, tv_remote_main_menu_callback, app);
+    submenu_add_item(
+        app->main_menu, "Settings", TvRemoteMenuSettings, tv_remote_main_menu_callback, app);
     submenu_add_item(
         app->main_menu, "About", TvRemoteMenuAbout, tv_remote_main_menu_callback, app);
     View* main_menu_view = submenu_get_view(app->main_menu);
@@ -655,6 +759,11 @@ TvRemoteApp* tv_remote_app_alloc(void) {
     view_set_previous_callback(app->button_map_view, tv_remote_back_to_menu_callback);
     view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewButtonMap, app->button_map_view);
 
+    /* ── Settings view ── */
+    app->settings_view = tv_remote_settings_view_alloc(app);
+    view_set_previous_callback(app->settings_view, tv_remote_back_to_menu_callback);
+    view_dispatcher_add_view(app->view_dispatcher, TvRemoteViewSettings, app->settings_view);
+
     /* ── About view ── */
     app->about_view = tv_remote_about_view_alloc();
     view_set_previous_callback(app->about_view, tv_remote_back_to_menu_callback);
@@ -686,6 +795,7 @@ void tv_remote_app_free(TvRemoteApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewSelectRemote);
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewTextInput);
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewButtonMap);
+    view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewSettings);
     view_dispatcher_remove_view(app->view_dispatcher, TvRemoteViewAbout);
 
     submenu_free(app->main_menu);
@@ -695,6 +805,7 @@ void tv_remote_app_free(TvRemoteApp* app) {
     tv_remote_learn_view_free(app->learn_view);
     tv_remote_remote_view_free(app->remote_view);
     view_free(app->button_map_view);
+    view_free(app->settings_view);
     view_free(app->about_view);
 
     view_dispatcher_free(app->view_dispatcher);
@@ -714,6 +825,8 @@ int32_t flipper_tv_remote_app(void* p) {
     FURI_LOG_I(TV_REMOTE_APP_TAG, "Starting TV Remote app");
 
     TvRemoteApp* app = tv_remote_app_alloc();
+    tv_remote_settings_load(app);
+    tv_remote_apply_orientation(app);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, TvRemoteViewMainMenu);
     view_dispatcher_run(app->view_dispatcher);

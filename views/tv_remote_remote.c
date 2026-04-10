@@ -65,6 +65,7 @@ typedef struct {
     bool active_is_hold;   /**< True when the hold action is active. */
     bool learned[TV_BUTTON_COUNT]; /**< Snapshot – which buttons have signals. */
     uint8_t pressed_keys;  /**< Bitmask of physically held d-pad/ok/back keys. */
+    TvRemoteOrientation orientation; /**< Current screen orientation. */
 } TvRemoteRemoteModel;
 
 /* Bitmask bits for pressed_keys */
@@ -206,10 +207,111 @@ static void draw_ring_filled(Canvas* canvas, int cx, int cy, int r_in, int r_out
     }
 }
 
+/* ---- Horizontal draw (128×64, Flipper held normally) ---- */
+
+#define H_CX     92
+#define H_CY     32
+#define H_R_HOME  5
+#define H_R_OK   10
+#define H_R_DPAD 17
+#define H_R_HOLD 25
+#define H_D_OK    7
+#define H_D_HOLD 18
+
+static void tv_remote_remote_draw_horizontal(Canvas* canvas, TvRemoteRemoteModel* model) {
+    canvas_clear(canvas);
+    int8_t ab   = model->active_button;
+    uint8_t pk  = model->pressed_keys;
+    bool is_hold = model->active_is_hold;
+
+    bool home_active  = (ab == (int8_t)TvButtonHome);
+    bool ok_active    = (ab == (int8_t)TvButtonOk)    || ((pk & KEY_BIT_OK)    && !is_hold);
+    bool r3_top       = (ab == (int8_t)TvButtonUp)    || ((pk & KEY_BIT_UP)    && !is_hold);
+    bool r3_bottom    = (ab == (int8_t)TvButtonDown)  || ((pk & KEY_BIT_DOWN)  && !is_hold);
+    bool r3_left      = (ab == (int8_t)TvButtonLeft)  || ((pk & KEY_BIT_LEFT)  && !is_hold);
+    bool r3_right     = (ab == (int8_t)TvButtonRight) || ((pk & KEY_BIT_RIGHT) && !is_hold);
+    bool r4_top    = (ab == (int8_t)TvButtonVolUp);
+    bool r4_bottom = (ab == (int8_t)TvButtonVolDn);
+    bool r4_left   = (ab == (int8_t)TvButtonChDn);
+    bool r4_right  = (ab == (int8_t)TvButtonChUp);
+
+    canvas_set_font(canvas, FontSecondary);
+    canvas_set_color(canvas, ColorBlack);
+
+    if(r4_top)    draw_ring_quadrant_filled(canvas, H_CX, H_CY, H_R_DPAD, H_R_HOLD, QUAD_TOP);
+    if(r4_bottom) draw_ring_quadrant_filled(canvas, H_CX, H_CY, H_R_DPAD, H_R_HOLD, QUAD_BOTTOM);
+    if(r4_left)   draw_ring_quadrant_filled(canvas, H_CX, H_CY, H_R_DPAD, H_R_HOLD, QUAD_LEFT);
+    if(r4_right)  draw_ring_quadrant_filled(canvas, H_CX, H_CY, H_R_DPAD, H_R_HOLD, QUAD_RIGHT);
+    if(r3_top)    draw_ring_quadrant_filled(canvas, H_CX, H_CY, H_R_OK, H_R_DPAD, QUAD_TOP);
+    if(r3_bottom) draw_ring_quadrant_filled(canvas, H_CX, H_CY, H_R_OK, H_R_DPAD, QUAD_BOTTOM);
+    if(r3_left)   draw_ring_quadrant_filled(canvas, H_CX, H_CY, H_R_OK, H_R_DPAD, QUAD_LEFT);
+    if(r3_right)  draw_ring_quadrant_filled(canvas, H_CX, H_CY, H_R_OK, H_R_DPAD, QUAD_RIGHT);
+    if(ok_active)   draw_ring_filled(canvas, H_CX, H_CY, H_R_HOME, H_R_OK);
+    if(home_active) canvas_draw_disc(canvas, H_CX, H_CY, H_R_HOME);
+
+    canvas_draw_circle(canvas, H_CX, H_CY, H_R_HOME);
+    canvas_draw_circle(canvas, H_CX, H_CY, H_R_OK);
+    canvas_draw_circle(canvas, H_CX, H_CY, H_R_DPAD);
+    canvas_draw_circle(canvas, H_CX, H_CY, H_R_HOLD);
+
+    canvas_draw_line(canvas, H_CX + H_D_OK, H_CY - H_D_OK, H_CX + H_D_HOLD, H_CY - H_D_HOLD);
+    canvas_draw_line(canvas, H_CX - H_D_OK, H_CY - H_D_OK, H_CX - H_D_HOLD, H_CY - H_D_HOLD);
+    canvas_draw_line(canvas, H_CX + H_D_OK, H_CY + H_D_OK, H_CX + H_D_HOLD, H_CY + H_D_HOLD);
+    canvas_draw_line(canvas, H_CX - H_D_OK, H_CY + H_D_OK, H_CX - H_D_HOLD, H_CY + H_D_HOLD);
+
+    /* Home icon */
+    canvas_set_color(canvas, home_active ? ColorWhite : ColorBlack);
+    canvas_draw_line(canvas, H_CX,     H_CY - 4, H_CX - 3, H_CY - 1);
+    canvas_draw_line(canvas, H_CX,     H_CY - 4, H_CX + 3, H_CY - 1);
+    canvas_draw_line(canvas, H_CX - 2, H_CY - 1, H_CX - 2, H_CY + 3);
+    canvas_draw_line(canvas, H_CX + 2, H_CY - 1, H_CX + 2, H_CY + 3);
+    canvas_draw_line(canvas, H_CX - 2, H_CY + 3, H_CX + 2, H_CY + 3);
+    canvas_set_color(canvas, ColorBlack);
+
+    /* Back box (top-left) */
+    const int bx = 2, bw = 24, bh = 27;
+    const int b_back_y = 3, b_power_y = 34;
+    bool back_active = (ab == (int8_t)TvButtonBack);
+    if(back_active) {
+        canvas_draw_rbox(canvas, bx, b_back_y, bw, bh, 3);
+        canvas_set_color(canvas, ColorWhite);
+    } else {
+        canvas_draw_rframe(canvas, bx, b_back_y, bw, bh, 3);
+    }
+    {
+        int bx2 = bx + bw / 2, by2 = b_back_y + bh / 2;
+        canvas_draw_line(canvas, bx2 - 6, by2 + 1, bx2 + 4, by2 + 1);
+        canvas_draw_line(canvas, bx2 + 4, by2 + 1, bx2 + 6, by2 - 1);
+        canvas_draw_line(canvas, bx2 + 6, by2 - 1, bx2 + 6, by2 - 3);
+        canvas_draw_line(canvas, bx2 + 6, by2 - 3, bx2 + 4, by2 - 5);
+        canvas_draw_line(canvas, bx2 + 4, by2 - 5, bx2 + 1, by2 - 5);
+        canvas_draw_line(canvas, bx2 - 6, by2 + 1, bx2 - 3, by2 - 2);
+        canvas_draw_line(canvas, bx2 - 6, by2 + 1, bx2 - 3, by2 + 4);
+    }
+    if(back_active) canvas_set_color(canvas, ColorBlack);
+
+    /* Power box (bottom-left) */
+    bool power_active = (ab == (int8_t)TvButtonPower);
+    if(power_active) {
+        canvas_draw_rbox(canvas, bx, b_power_y, bw, bh, 3);
+        canvas_set_color(canvas, ColorWhite);
+    } else {
+        canvas_draw_rframe(canvas, bx, b_power_y, bw, bh, 3);
+    }
+    canvas_draw_str_aligned(canvas, bx + bw / 2, b_power_y + 5, AlignCenter, AlignTop, "x2");
+    canvas_draw_str_aligned(
+        canvas, bx + bw / 2, b_power_y + bh - 4, AlignCenter, AlignBottom, "Pwr");
+    if(power_active) canvas_set_color(canvas, ColorBlack);
+}
+
 /* ---- Draw callback ---- */
 
 static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
     TvRemoteRemoteModel* model = model_void;
+    if(model->orientation == TvRemoteOrientationHorizontal) {
+        tv_remote_remote_draw_horizontal(canvas, model);
+        return;
+    }
     canvas_clear(canvas);
 
     const int cx = DISP_W / 2;      /* 32 */
@@ -353,6 +455,7 @@ static void tv_remote_remote_update_model(
             model->active_button = active;
             model->active_is_hold = is_hold;
             model->pressed_keys = pressed_keys;
+            model->orientation = app->orientation;
             for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
                 model->learned[i] = app->buttons[i].learned;
             }
@@ -486,6 +589,10 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
 
 static void tv_remote_remote_enter_callback(void* context) {
     TvRemoteApp* app = context;
+    view_set_orientation(
+        app->remote_view,
+        app->orientation == TvRemoteOrientationHorizontal ?
+            ViewOrientationHorizontal : ViewOrientationVertical);
     app->tx_active = false;
     app->remote_pressed_keys = 0;
     app->remote_held_long = false;
