@@ -565,6 +565,8 @@ static View* tv_remote_about_view_alloc(void) {
     return view;
 }
 
+#include <gui/elements.h>
+
 /* ---- Settings: persistent storage ---- */
 
 typedef struct {
@@ -616,9 +618,9 @@ static void tv_remote_settings_draw_callback(Canvas* canvas, void* model_void) {
     canvas_draw_str(canvas, 4, 26, "Orientation:");
     uint8_t idx = (uint8_t)model->orientation;
     canvas_draw_str_aligned(canvas, 64, 36, AlignCenter, AlignTop, orient_labels[idx]);
-    canvas_draw_str_aligned(canvas, 10, 58, AlignCenter, AlignTop, "<");
-    canvas_draw_str_aligned(canvas, 118, 58, AlignCenter, AlignTop, ">");
-    canvas_draw_str_aligned(canvas, 64, 58, AlignCenter, AlignTop, "Ok / L / R");
+    elements_button_left(canvas, "<");
+    elements_button_right(canvas, ">");
+    elements_button_center(canvas, "Ok");
 }
 
 static bool tv_remote_settings_input_callback(InputEvent* event, void* context) {
