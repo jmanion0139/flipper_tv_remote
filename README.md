@@ -2,20 +2,6 @@
 
 Turn your Flipper Zero into a fully functional TV remote. Record buttons from any IR remote and replay them from your Flipper — no original remote needed.
 
-## Screenshots
-
-| Main Menu | Remote Selection | Learning a Button |
-|:---------:|:----------------:|:-----------------:|
-| ![Main menu](docs/screenshots/Menu.png) | ![Remote selection](docs/screenshots/Remote-Selection.png) | ![Learning a button](docs/screenshots/Learn-Remote.png) |
-
-| Learning Power | Vertical Remote | Horizontal Remote |
-|:--------------:|:---------------:|:-----------------:|
-| ![Learning Power](docs/screenshots/Learn-Remote-Power.png) | ![Vertical remote](docs/screenshots/Vertical-Remote.png) | ![Horizontal remote](docs/screenshots/Horizontal-Remote.png) |
-
-| Settings |
-|:--------:|
-| ![Settings](docs/screenshots/Settings.png) |
-
 ## What it does
 
 flipper_tv_remote lets you save the IR signals from any TV remote and replay them through your Flipper Zero's built-in IR blaster. You can store as many remotes as you like, each with a name you choose. Once a remote is saved you no longer need the original.
@@ -44,6 +30,8 @@ Download the latest `flipper_tv_remote.fap` and copy it to `apps/Infrared/` on y
 
 ### Main menu
 
+![Main menu](docs/screenshots/Menu.png)
+
 | Item | What it does |
 |---|---|
 | **Learn Remote** | Record a new remote or overwrite an existing one |
@@ -54,6 +42,10 @@ Download the latest `flipper_tv_remote.fap` and copy it to `apps/Infrared/` on y
 | **About** | Author and license info |
 
 ### Learning a remote
+
+| Waiting for signal | Signal received (Power) |
+|:------------------:|:-----------------------:|
+| ![Learning a button](docs/screenshots/Learn-Remote.png) | ![Learning Power](docs/screenshots/Learn-Remote-Power.png) |
 
 1. Select **Learn Remote** from the main menu.
 2. Choose **New Remote** and enter a name (e.g. `living_room`), or choose **Update Remote** to re-record an existing one.
@@ -68,6 +60,8 @@ Download the latest `flipper_tv_remote.fap` and copy it to `apps/Infrared/` on y
 > Keep the original remote within about 30 cm of the Flipper's IR window with a clear line of sight for the best results.
 
 ### Using your Flipper as a remote
+
+![Remote selection](docs/screenshots/Remote-Selection.png)
 
 1. Select **Use Remote** from the main menu.
 2. Pick the remote you want to use from the list.
@@ -89,6 +83,12 @@ Download the latest `flipper_tv_remote.fap` and copy it to `apps/Infrared/` on y
 You can also open the **Button Map** from the main menu to see this reference any time while using the app.
 
 ### Screen orientation
+
+| Vertical | Horizontal |
+|:--------:|:----------:|
+| ![Vertical remote](docs/screenshots/Vertical-Remote.png) | ![Horizontal remote](docs/screenshots/Horizontal-Remote.png) |
+
+![Settings](docs/screenshots/Settings.png)
 
 Open **Settings** from the main menu to switch between:
 
