@@ -25,7 +25,6 @@
 /* ---- Layout constants (64×128 portrait canvas) ---- */
 
 #define DISP_W 64
-#define DISP_H 128
 
 /* Concentric-circle radii (Home < Ok < D-pad < Hold) */
 #define R_HOME  7
@@ -550,8 +549,10 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
     uint8_t eff_hold  = do_swap ? map->press_btn : map->hold_btn;
 
     if(event->type == InputTypePress) {
-        /* Consume silently – no visual until action is decided */
+        /* Show ring section immediately on press */
+        app->remote_pressed_keys |= key_to_bit(event->key);
         app->remote_held_long = false;
+        tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
         return true;
     }
 
