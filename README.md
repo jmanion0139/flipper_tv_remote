@@ -32,8 +32,6 @@ Want to build from source? See [docs/build-instructions.md](docs/build-instructi
 
 ## Main menu
 
-![Main menu](docs/screenshots/Menu.png)
-
 | Item | What it does |
 |---|---|
 | **Learn Remote** | Record a new remote or overwrite an existing one |
@@ -44,10 +42,6 @@ Want to build from source? See [docs/build-instructions.md](docs/build-instructi
 | **About** | Author and license info |
 
 ## Learning a remote
-
-| Waiting for signal | Signal received (Power) |
-|:------------------:|:-----------------------:|
-| ![Learning a button](docs/screenshots/Learn-Remote.png) | ![Learning Power](docs/screenshots/Learn-Remote-Power.png) |
 
 1. Select **Learn Remote** from the main menu.
 2. Choose **New Remote** and enter a name (e.g. living_room), or choose **Update Remote** to re-record an existing one.
@@ -63,15 +57,9 @@ Keep the original remote within about 30 cm of the Flipper's IR window with a cl
 
 ## Using your Flipper as a remote
 
-![Remote selection](docs/screenshots/Remote-Selection.png)
-
 1. Select **Use Remote** from the main menu.
 2. Pick the remote you want to use from the list.
 3. Use the d-pad and OK button to send IR signals. The concentric-circle UI highlights the active ring segment to show which action is being sent.
-
-| Up pressed | OK pressed (Home) |
-|:----------:|:-----------------:|
-| ![Up pressed](docs/screenshots/Veritcal-Remote-Button-Up-Pressed.png) | ![OK pressed](docs/screenshots/Veritcal-Remote-Button-Ok-Pressed.png) |
 
 ## Button reference
 
@@ -90,12 +78,6 @@ When **Buttons** is set to **Swapped** in Settings, the short press and hold act
 You can also open the **Button Map** from the main menu to see this reference any time while using the app.
 
 ## Screen orientation
-
-| Vertical | Horizontal |
-|:--------:|:----------:|
-| ![Vertical remote](docs/screenshots/Vertical-Remote.png) | ![Horizontal remote](docs/screenshots/Horizontal-Remote.png) |
-
-![Settings](docs/screenshots/Settings.png)
 
 Open **Settings** from the main menu to configure:
 
