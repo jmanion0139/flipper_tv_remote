@@ -7,6 +7,7 @@
 #include "views/tv_remote_learn.h"
 #include "views/tv_remote_remote.h"
 
+#include <gui/elements.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -449,11 +450,12 @@ static void tv_remote_main_menu_callback(void* context, uint32_t index) {
 /* ---- Button Map view ---- */
 
 typedef struct {
-    uint8_t scroll; /**< Top row index (0-based). */
+    uint8_t scroll;      /**< Top row index (0-based). */
+    bool button_swap;    /**< Mirror of app->button_swap for draw. */
 } TvRemoteButtonMapModel;
 
-/* All rows in display order */
-static const char* const bmap_lines[] = {
+/* All rows in display order – default (short=directional, hold=vol/ch) */
+static const char* const bmap_lines_default[] = {
     "  === D-Pad ===",
     "Up       - Up",
     "Down     - Down",
@@ -471,7 +473,27 @@ static const char* const bmap_lines[] = {
     "Back x2  - Power",
     "Back[Hold]- Exit",
 };
-#define BMAP_LINE_COUNT ((int)(sizeof(bmap_lines) / sizeof(bmap_lines[0])))
+
+/* Swapped (short=vol/ch, hold=directional) */
+static const char* const bmap_lines_swapped[] = {
+    "  === D-Pad ===",
+    "Up       - Vol Up",
+    "Down     - Vol Dn",
+    "Left     - Ch Dn",
+    "Right    - Ch Up",
+    "Up[Hold] - Up",
+    "Dn[Hold] - Down",
+    "Lt[Hold] - Left",
+    "Rt[Hold] - Right",
+    "  === Center ===",
+    "OK       - OK",
+    "OK[Hold] - Home",
+    "  === Bottom ===",
+    "Back     - Back",
+    "Back x2  - Power",
+    "Back[Hold]- Exit",
+};
+#define BMAP_LINE_COUNT ((int)(sizeof(bmap_lines_default) / sizeof(bmap_lines_default[0])))
 #define BMAP_VISIBLE_ROWS 4
 #define BMAP_ROW_H 11
 #define BMAP_Y0 20
@@ -482,11 +504,13 @@ static void tv_remote_bmap_draw_callback(Canvas* canvas, void* model_void) {
     canvas_set_font(canvas, FontPrimary);
     canvas_draw_str_aligned(canvas, 64, 0, AlignCenter, AlignTop, "Button Map");
     canvas_set_font(canvas, FontSecondary);
+    const char* const* lines =
+        model->button_swap ? bmap_lines_swapped : bmap_lines_default;
     int top = (int)model->scroll;
     for(int i = 0; i < BMAP_VISIBLE_ROWS; i++) {
         int idx = top + i;
         if(idx >= BMAP_LINE_COUNT) break;
-        canvas_draw_str(canvas, 0, BMAP_Y0 + i * BMAP_ROW_H, bmap_lines[idx]);
+        canvas_draw_str(canvas, 0, BMAP_Y0 + i * BMAP_ROW_H, lines[idx]);
     }
     /* Scroll indicator */
     if(BMAP_LINE_COUNT > BMAP_VISIBLE_ROWS) {
@@ -527,7 +551,10 @@ static void tv_remote_bmap_enter_callback(void* context) {
     with_view_model(
         app->button_map_view,
         TvRemoteButtonMapModel * model,
-        { model->scroll = 0; },
+        {
+            model->scroll = 0;
+            model->button_swap = app->button_swap;
+        },
         true);
 }
 
@@ -539,7 +566,13 @@ static View* tv_remote_bmap_view_alloc(TvRemoteApp* app) {
     view_set_input_callback(view, tv_remote_bmap_input_callback);
     view_set_enter_callback(view, tv_remote_bmap_enter_callback);
     with_view_model(
-        view, TvRemoteButtonMapModel * model, { model->scroll = 0; }, true);
+        view,
+        TvRemoteButtonMapModel * model,
+        {
+            model->scroll = 0;
+            model->button_swap = false;
+        },
+        true);
     return view;
 }
 
@@ -564,8 +597,6 @@ static View* tv_remote_about_view_alloc(void) {
     view_set_draw_callback(view, tv_remote_about_draw_callback);
     return view;
 }
-
-#include <gui/elements.h>
 
 /* ---- Settings: persistent storage ---- */
 
@@ -698,6 +729,7 @@ static void tv_remote_settings_enter_callback(void* context) {
         {
             model->orientation = app->orientation;
             model->button_swap = app->button_swap;
+            model->selected_row = 0;
         },
         true);
 }
