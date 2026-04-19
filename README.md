@@ -78,9 +78,8 @@ Download the latest `flipper_tv_remote.fap` and copy it to `apps/Infrared/` on y
 | Left | Left | Ch Down |
 | Right | Right | Ch Up |
 | OK | OK | Home |
-| Back | Back (IR signal) | — |
+| Back | Back (IR signal) | Exit Remote |
 | Back × 2 (double-tap) | Power | — |
-| Back (long press) | Exit app | — |
 
 You can also open the **Button Map** from the main menu to see this reference any time while using the app.
 
