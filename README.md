@@ -1,4 +1,4 @@
-# flipper_tv_remote
+# <img src="icons/tv_remote_10px.png" width="40"> flipper_tv_remote
 
 Turn your Flipper Zero into a fully functional TV remote. Record buttons from any IR remote and replay them from your Flipper — no original remote needed.
 
