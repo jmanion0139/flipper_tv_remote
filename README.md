@@ -6,7 +6,9 @@ Turn your Flipper Zero into a fully functional TV remote. Record buttons from an
 
 flipper_tv_remote lets you save the IR signals from any TV remote and replay them through your Flipper Zero's built-in IR blaster. You can store as many remotes as you like, each with a name you choose. Once a remote is saved you no longer need the original.
 
-The app is built around an intuitive concentric-circle UI — the same layout as a real TV remote — and supports both portrait (vertical) and landscape (horizontal) orientations so you can hold the Flipper whichever way feels most natural.
+The goal was a single screen that could fully replace a TV remote — all the most commonly used buttons available instantly, no menus to navigate mid-use. The d-pad, OK button, and Back button each handle two actions (short press and hold), with a double-tap on Back for Power, which makes it possible to cover the buttons you actually reach for most often in a way that feels natural to use.
+
+The app is built around a concentric-circle UI — the same layout as a real TV remote — and supports both portrait (vertical) and landscape (horizontal) orientations so you can hold the Flipper whichever way feels most comfortable.
 
 Key capabilities:
 
