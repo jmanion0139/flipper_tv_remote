@@ -1,4 +1,4 @@
-# <img src="icons/tv_remote_10px.png" width="40"> flipper_tv_remote
+# flipper_tv_remote
 
 Turn your Flipper Zero into a fully functional TV remote. Record buttons from any IR remote and replay them from your Flipper — no original remote needed.
 
@@ -12,19 +12,19 @@ The app is built around a concentric-circle UI — the same layout as a real TV 
 
 Key capabilities:
 
-- **Multiple named remotes** — save as many remotes as you like, each stored as a separate `.ir` file on the SD card
+- **Multiple named remotes** — save as many remotes as you like, each stored as a separate **.ir** file on the SD card
 - **Learn mode** — record up to 12 buttons (Power, Vol+, Vol−, Ch+, Ch−, Up, Down, Left, Right, OK, Back, Home) from any IR remote
 - **Concentric-circle remote UI** — tap or hold the d-pad to send signals; short-press and hold trigger different IR commands
 - **Double-tap Back for Power** — quickly tap Back twice to send the Power signal
 - **Two screen orientations** — Vertical (portrait, Flipper rotated like a tall remote) or Horizontal (landscape, circle remote on the right) — preference is saved and restored on restart
 - **Button Map** — in-app reference card showing every button's press and hold action
-- **Compatible `.ir` files** — saved remotes use the standard Flipper IR format and work with the built-in Infrared app
+- **Compatible .ir files** — saved remotes use the standard Flipper IR format and work with the built-in Infrared app
 
 ## Installation
 
 Pre-built releases are available on the [Releases page](https://github.com/jmanion0139/flipper_tv_remote/releases).
 
-Download the latest `flipper_tv_remote.fap` and copy it to `apps/Infrared/` on your Flipper's microSD card. The app will appear under **Applications → Infrared → TV Remote**.
+Download the latest **flipper_tv_remote.fap** and copy it to **apps/Infrared/** on your Flipper's microSD card. The app will appear under **Applications → Infrared → TV Remote**.
 
 > Want to build from source? See [docs/build-instructions.md](docs/build-instructions.md).
 
@@ -50,7 +50,7 @@ Download the latest `flipper_tv_remote.fap` and copy it to `apps/Infrared/` on y
 | ![Learning a button](docs/screenshots/Learn-Remote.png) | ![Learning Power](docs/screenshots/Learn-Remote-Power.png) |
 
 1. Select **Learn Remote** from the main menu.
-2. Choose **New Remote** and enter a name (e.g. `living_room`), or choose **Update Remote** to re-record an existing one.
+2. Choose **New Remote** and enter a name (e.g. living_room), or choose **Update Remote** to re-record an existing one.
 3. The app walks you through each button one at a time. When prompted, point your original remote at the **IR window at the top of the Flipper** and press the button.
 4. After each signal is received:
    - Press **OK** to accept and move to the next button
@@ -108,14 +108,14 @@ Use **Up/Down** to navigate between settings and **Left/Right** (or **OK**) to c
 
 ## File storage
 
-Remotes and settings are saved to the `infrared/` folder on the SD card:
+Remotes and settings are saved to the **infrared/** folder on the SD card:
 
 | Path | Contents |
 |---|---|
-| `SD:/infrared/tv_remote_<name>.ir` | Recorded IR signals for a named remote |
-| `SD:/infrared/tv_remote_settings.dat` | App settings (orientation preference) |
+| SD:/infrared/tv_remote_\<name\>.ir | Recorded IR signals for a named remote |
+| SD:/infrared/tv_remote_settings.dat | App settings (orientation preference) |
 
-`.ir` files use the standard Flipper IR format and are fully compatible with the built-in Infrared app.
+.ir files use the standard Flipper IR format and are fully compatible with the built-in Infrared app.
 
 ## License
 
