@@ -67,11 +67,15 @@ Download the latest `flipper_tv_remote.fap` and copy it to `apps/Infrared/` on y
 
 1. Select **Use Remote** from the main menu.
 2. Pick the remote you want to use from the list.
-3. Use the d-pad and OK button to send IR signals. The concentric-circle UI shows which action each button triggers.
+3. Use the d-pad and OK button to send IR signals. The concentric-circle UI highlights the active ring segment to show which action is being sent.
+
+| Up pressed | OK pressed (Home) |
+|:----------:|:-----------------:|
+| ![Up pressed](docs/screenshots/Veritcal-Remote-Button-Up-Pressed.png) | ![OK pressed](docs/screenshots/Veritcal-Remote-Button-Ok-Pressed.png) |
 
 ### Button reference
 
-| Physical key | Short press | Hold |
+| Physical key | Short press (Default) | Hold (Default) |
 |---|---|---|
 | Up | Up | Vol Up |
 | Down | Down | Vol Down |
@@ -80,6 +84,8 @@ Download the latest `flipper_tv_remote.fap` and copy it to `apps/Infrared/` on y
 | OK | OK | Home |
 | Back | Back (IR signal) | Exit Remote |
 | Back × 2 (double-tap) | Power | — |
+
+When **Buttons** is set to **Swapped** in Settings, the short press and hold actions for the d-pad are reversed — short press sends Vol/Ch and hold sends Up/Down/Left/Right.
 
 You can also open the **Button Map** from the main menu to see this reference any time while using the app.
 
@@ -91,14 +97,14 @@ You can also open the **Button Map** from the main menu to see this reference an
 
 ![Settings](docs/screenshots/Settings.png)
 
-Open **Settings** from the main menu to switch between:
+Open **Settings** from the main menu to configure:
 
-| Option | Description |
-|---|---|
-| **Vertical** | Flipper rotated 90° — holds like a tall remote with the d-pad on the right |
-| **Horizontal** | Flipper held normally in landscape — concentric circle on the right, Back/Power shortcuts on the left |
+| Setting | Options | Description |
+|---|---|---|
+| **Orientation** | Vertical / Horizontal | **Vertical** — Flipper rotated 90°, holds like a tall remote with the d-pad on the right. **Horizontal** — Flipper held normally in landscape, circle on the right, Back/Power on the left. |
+| **Buttons** | Default / Swapped | **Default** — short press sends directional signals (Up/Down/Left/Right), hold sends volume and channel. **Swapped** — short press sends volume and channel, hold sends directional signals. |
 
-Your choice is saved to the SD card and restored automatically on next launch.
+Use **Up/Down** to navigate between settings and **Left/Right** (or **OK**) to change the selected value. All settings are saved to the SD card and restored automatically on next launch.
 
 ## File storage
 

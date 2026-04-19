@@ -571,26 +571,34 @@ static View* tv_remote_about_view_alloc(void) {
 
 typedef struct {
     uint8_t orientation;
+    uint8_t button_swap;
 } TvRemoteSettingsData;
 
 #define TV_REMOTE_SETTINGS_MAGIC   0x54u
-#define TV_REMOTE_SETTINGS_VERSION 1u
+#define TV_REMOTE_SETTINGS_VERSION 2u
 
 static void tv_remote_settings_save(TvRemoteApp* app) {
-    TvRemoteSettingsData d = {.orientation = (uint8_t)app->orientation};
+    TvRemoteSettingsData d = {
+        .orientation = (uint8_t)app->orientation,
+        .button_swap = (uint8_t)app->button_swap,
+    };
     saved_struct_save(
         TV_REMOTE_SETTINGS_PATH, &d, sizeof(d),
         TV_REMOTE_SETTINGS_MAGIC, TV_REMOTE_SETTINGS_VERSION);
 }
 
 static void tv_remote_settings_load(TvRemoteApp* app) {
-    TvRemoteSettingsData d = {.orientation = TvRemoteOrientationVertical};
+    TvRemoteSettingsData d = {
+        .orientation = TvRemoteOrientationVertical,
+        .button_swap = 0,
+    };
     saved_struct_load(
         TV_REMOTE_SETTINGS_PATH, &d, sizeof(d),
         TV_REMOTE_SETTINGS_MAGIC, TV_REMOTE_SETTINGS_VERSION);
     if(d.orientation < (uint8_t)TvRemoteOrientationCount) {
         app->orientation = (TvRemoteOrientation)d.orientation;
     }
+    app->button_swap = (bool)d.button_swap;
 }
 
 static void tv_remote_apply_orientation(TvRemoteApp* app) {
@@ -604,9 +612,12 @@ static void tv_remote_apply_orientation(TvRemoteApp* app) {
 
 typedef struct {
     TvRemoteOrientation orientation;
+    bool button_swap;
+    uint8_t selected_row;
 } TvRemoteSettingsModel;
 
 static const char* const orient_labels[] = {"Vertical", "Horizontal"};
+static const char* const btn_swap_labels[] = {"Default", "Swapped"};
 
 static void tv_remote_settings_draw_callback(Canvas* canvas, void* model_void) {
     TvRemoteSettingsModel* model = model_void;
@@ -615,27 +626,63 @@ static void tv_remote_settings_draw_callback(Canvas* canvas, void* model_void) {
     canvas_draw_str_aligned(canvas, 64, 2, AlignCenter, AlignTop, "Settings");
     canvas_draw_line(canvas, 0, 13, 127, 13);
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str(canvas, 4, 26, "Orientation:");
-    uint8_t idx = (uint8_t)model->orientation;
-    canvas_draw_str_aligned(canvas, 64, 36, AlignCenter, AlignTop, orient_labels[idx]);
+
+    /* Row 0: Orientation */
+    if(model->selected_row == 0) {
+        canvas_draw_box(canvas, 0, 15, 128, 11);
+        canvas_set_color(canvas, ColorWhite);
+    }
+    canvas_draw_str(canvas, 4, 24, "Orientation:");
+    canvas_draw_str_aligned(
+        canvas, 124, 24, AlignRight, AlignBottom, orient_labels[(uint8_t)model->orientation]);
+    canvas_set_color(canvas, ColorBlack);
+
+    /* Row 1: Button swap */
+    if(model->selected_row == 1) {
+        canvas_draw_box(canvas, 0, 28, 128, 11);
+        canvas_set_color(canvas, ColorWhite);
+    }
+    canvas_draw_str(canvas, 4, 37, "Buttons:");
+    canvas_draw_str_aligned(
+        canvas, 124, 37, AlignRight, AlignBottom, btn_swap_labels[(uint8_t)model->button_swap]);
+    canvas_set_color(canvas, ColorBlack);
+
     elements_button_left(canvas, "<");
     elements_button_right(canvas, ">");
-    elements_button_center(canvas, "Ok");
 }
 
 static bool tv_remote_settings_input_callback(InputEvent* event, void* context) {
     TvRemoteApp* app = context;
     if(event->type != InputTypeShort) return false;
+
+    if(event->key == InputKeyUp || event->key == InputKeyDown) {
+        with_view_model(
+            app->settings_view,
+            TvRemoteSettingsModel * model,
+            {
+                if(event->key == InputKeyUp && model->selected_row > 0) model->selected_row--;
+                if(event->key == InputKeyDown && model->selected_row < 1) model->selected_row++;
+            },
+            true);
+        return true;
+    }
+
     if(event->key != InputKeyLeft && event->key != InputKeyRight &&
        event->key != InputKeyOk)
         return false;
+
     with_view_model(
         app->settings_view,
         TvRemoteSettingsModel * model,
         {
-            model->orientation = (TvRemoteOrientation)(
-                ((uint8_t)model->orientation + 1u) % (uint8_t)TvRemoteOrientationCount);
-            app->orientation = model->orientation;
+            if(model->selected_row == 0) {
+                model->orientation = (TvRemoteOrientation)(
+                    ((uint8_t)model->orientation + 1u) % (uint8_t)TvRemoteOrientationCount);
+                app->orientation = model->orientation;
+            } else {
+                model->button_swap = !model->button_swap;
+                app->button_swap = model->button_swap;
+            }
         },
         true);
     tv_remote_apply_orientation(app);
@@ -648,7 +695,10 @@ static void tv_remote_settings_enter_callback(void* context) {
     with_view_model(
         app->settings_view,
         TvRemoteSettingsModel * model,
-        {model->orientation = app->orientation;},
+        {
+            model->orientation = app->orientation;
+            model->button_swap = app->button_swap;
+        },
         true);
 }
 
@@ -661,7 +711,11 @@ static View* tv_remote_settings_view_alloc(TvRemoteApp* app) {
     view_set_enter_callback(view, tv_remote_settings_enter_callback);
     with_view_model(
         view, TvRemoteSettingsModel * model,
-        {model->orientation = TvRemoteOrientationVertical;},
+        {
+            model->orientation = TvRemoteOrientationVertical;
+            model->button_swap = false;
+            model->selected_row = 0;
+        },
         true);
     return view;
 }

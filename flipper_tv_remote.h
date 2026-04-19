@@ -136,6 +136,7 @@ struct TvRemoteApp {
 
     /* Settings */
     TvRemoteOrientation orientation;
+    bool button_swap; /**< True: short press = vol/ch, hold = directional (default is reversed). */
 
     /* Button storage */
     TvRemoteButton buttons[TV_BUTTON_COUNT];

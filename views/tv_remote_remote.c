@@ -66,6 +66,7 @@ typedef struct {
     bool learned[TV_BUTTON_COUNT]; /**< Snapshot – which buttons have signals. */
     uint8_t pressed_keys;  /**< Bitmask of physically held d-pad/ok/back keys. */
     TvRemoteOrientation orientation; /**< Current screen orientation. */
+    bool button_swap; /**< True: short press = vol/ch, hold = directional. */
 } TvRemoteRemoteModel;
 
 /* Bitmask bits for pressed_keys */
@@ -224,16 +225,17 @@ static void tv_remote_remote_draw_horizontal(Canvas* canvas, TvRemoteRemoteModel
     uint8_t pk  = model->pressed_keys;
     bool is_hold = model->active_is_hold;
 
+    bool swap = model->button_swap;
     bool home_active  = (ab == (int8_t)TvButtonHome);
     bool ok_active    = (ab == (int8_t)TvButtonOk)    || ((pk & KEY_BIT_OK)    && !is_hold);
-    bool r3_top       = (ab == (int8_t)TvButtonUp)    || ((pk & KEY_BIT_UP)    && !is_hold);
-    bool r3_bottom    = (ab == (int8_t)TvButtonDown)  || ((pk & KEY_BIT_DOWN)  && !is_hold);
-    bool r3_left      = (ab == (int8_t)TvButtonLeft)  || ((pk & KEY_BIT_LEFT)  && !is_hold);
-    bool r3_right     = (ab == (int8_t)TvButtonRight) || ((pk & KEY_BIT_RIGHT) && !is_hold);
-    bool r4_top    = (ab == (int8_t)TvButtonVolUp);
-    bool r4_bottom = (ab == (int8_t)TvButtonVolDn);
-    bool r4_left   = (ab == (int8_t)TvButtonChDn);
-    bool r4_right  = (ab == (int8_t)TvButtonChUp);
+    bool r3_top    = (ab == (int8_t)(swap ? TvButtonVolUp : TvButtonUp))    || ((pk & KEY_BIT_UP)    && !is_hold);
+    bool r3_bottom = (ab == (int8_t)(swap ? TvButtonVolDn : TvButtonDown))  || ((pk & KEY_BIT_DOWN)  && !is_hold);
+    bool r3_left   = (ab == (int8_t)(swap ? TvButtonChDn  : TvButtonLeft))  || ((pk & KEY_BIT_LEFT)  && !is_hold);
+    bool r3_right  = (ab == (int8_t)(swap ? TvButtonChUp  : TvButtonRight)) || ((pk & KEY_BIT_RIGHT) && !is_hold);
+    bool r4_top    = (ab == (int8_t)(swap ? TvButtonUp    : TvButtonVolUp));
+    bool r4_bottom = (ab == (int8_t)(swap ? TvButtonDown  : TvButtonVolDn));
+    bool r4_left   = (ab == (int8_t)(swap ? TvButtonLeft  : TvButtonChDn));
+    bool r4_right  = (ab == (int8_t)(swap ? TvButtonRight : TvButtonChUp));
 
     canvas_set_font(canvas, FontSecondary);
     canvas_set_color(canvas, ColorBlack);
@@ -324,27 +326,23 @@ static void tv_remote_remote_draw_callback(Canvas* canvas, void* model_void) {
     /* ── Determine which sections are active ── */
 
     /* Center: Home (hold-Ok) */
+    bool swap = model->button_swap;
     bool home_active = (ab == (int8_t)TvButtonHome);
-
     /* Ring 2: Ok (press-Ok, but not when hold is active) */
     bool ok_active = (ab == (int8_t)TvButtonOk) ||
                      ((pk & KEY_BIT_OK) && !is_hold);
 
-    /* Ring 3 quadrants: d-pad press actions */
-    bool r3_top = (ab == (int8_t)TvButtonUp) ||
-                  ((pk & KEY_BIT_UP) && !is_hold);
-    bool r3_bottom = (ab == (int8_t)TvButtonDown) ||
-                     ((pk & KEY_BIT_DOWN) && !is_hold);
-    bool r3_left = (ab == (int8_t)TvButtonLeft) ||
-                   ((pk & KEY_BIT_LEFT) && !is_hold);
-    bool r3_right = (ab == (int8_t)TvButtonRight) ||
-                    ((pk & KEY_BIT_RIGHT) && !is_hold);
+    /* Ring 3 quadrants: short-press actions */
+    bool r3_top    = (ab == (int8_t)(swap ? TvButtonVolUp : TvButtonUp))    || ((pk & KEY_BIT_UP)    && !is_hold);
+    bool r3_bottom = (ab == (int8_t)(swap ? TvButtonVolDn : TvButtonDown))  || ((pk & KEY_BIT_DOWN)  && !is_hold);
+    bool r3_left   = (ab == (int8_t)(swap ? TvButtonChDn  : TvButtonLeft))  || ((pk & KEY_BIT_LEFT)  && !is_hold);
+    bool r3_right  = (ab == (int8_t)(swap ? TvButtonChUp  : TvButtonRight)) || ((pk & KEY_BIT_RIGHT) && !is_hold);
 
     /* Ring 4 quadrants: hold actions */
-    bool r4_top    = (ab == (int8_t)TvButtonVolUp);
-    bool r4_bottom = (ab == (int8_t)TvButtonVolDn);
-    bool r4_left   = (ab == (int8_t)TvButtonChDn);
-    bool r4_right  = (ab == (int8_t)TvButtonChUp);
+    bool r4_top    = (ab == (int8_t)(swap ? TvButtonUp    : TvButtonVolUp));
+    bool r4_bottom = (ab == (int8_t)(swap ? TvButtonDown  : TvButtonVolDn));
+    bool r4_left   = (ab == (int8_t)(swap ? TvButtonLeft  : TvButtonChDn));
+    bool r4_right  = (ab == (int8_t)(swap ? TvButtonRight : TvButtonChUp));
 
     canvas_set_font(canvas, FontSecondary);
     canvas_set_color(canvas, ColorBlack);
@@ -456,6 +454,7 @@ static void tv_remote_remote_update_model(
             model->active_is_hold = is_hold;
             model->pressed_keys = pressed_keys;
             model->orientation = app->orientation;
+            model->button_swap = app->button_swap;
             for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
                 model->learned[i] = app->buttons[i].learned;
             }
@@ -546,6 +545,9 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
     }
 
     const ButtonMapping* map = &key_map[event->key];
+    bool do_swap = app->button_swap && (event->key != InputKeyOk);
+    uint8_t eff_press = do_swap ? map->hold_btn : map->press_btn;
+    uint8_t eff_hold  = do_swap ? map->press_btn : map->hold_btn;
 
     if(event->type == InputTypePress) {
         /* Consume silently – no visual until action is decided */
@@ -556,8 +558,8 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
     if(event->type == InputTypeLong) {
         /* Start sending the hold/alt action */
         app->remote_held_long = true;
-        tv_remote_tx_start(app, map->hold_btn);
-        tv_remote_remote_update_model(app, (int8_t)map->hold_btn, true, app->remote_pressed_keys);
+        tv_remote_tx_start(app, eff_hold);
+        tv_remote_remote_update_model(app, (int8_t)eff_hold, true, app->remote_pressed_keys);
         return true;
     }
 
@@ -569,8 +571,8 @@ static bool tv_remote_remote_input_callback(InputEvent* event, void* context) {
         } else {
             /* Quick tap – show active ring section during burst */
             tv_remote_remote_update_model(
-                app, (int8_t)map->press_btn, false, app->remote_pressed_keys);
-            tv_remote_ir_burst(app, map->press_btn);
+                app, (int8_t)eff_press, false, app->remote_pressed_keys);
+            tv_remote_ir_burst(app, eff_press);
         }
         app->remote_held_long = false;
         tv_remote_remote_update_model(app, -1, false, app->remote_pressed_keys);
@@ -629,6 +631,7 @@ View* tv_remote_remote_view_alloc(TvRemoteApp* app) {
         {
             model->active_button = -1;
             model->active_is_hold = false;
+            model->button_swap = false;
             for(size_t i = 0; i < TV_BUTTON_COUNT; i++) {
                 model->learned[i] = false;
             }
