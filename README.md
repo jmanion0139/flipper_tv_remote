@@ -30,7 +30,7 @@ Want to build from source? See [docs/build-instructions.md](docs/build-instructi
 
 ## How to use
 
-### Main menu
+## Main menu
 
 ![Main menu](docs/screenshots/Menu.png)
 
@@ -43,7 +43,7 @@ Want to build from source? See [docs/build-instructions.md](docs/build-instructi
 | **Settings** | Change the screen orientation |
 | **About** | Author and license info |
 
-### Learning a remote
+## Learning a remote
 
 | Waiting for signal | Signal received (Power) |
 |:------------------:|:-----------------------:|
@@ -61,7 +61,7 @@ Want to build from source? See [docs/build-instructions.md](docs/build-instructi
 
 Keep the original remote within about 30 cm of the Flipper's IR window with a clear line of sight for the best results.
 
-### Using your Flipper as a remote
+## Using your Flipper as a remote
 
 ![Remote selection](docs/screenshots/Remote-Selection.png)
 
@@ -73,7 +73,7 @@ Keep the original remote within about 30 cm of the Flipper's IR window with a cl
 |:----------:|:-----------------:|
 | ![Up pressed](docs/screenshots/Veritcal-Remote-Button-Up-Pressed.png) | ![OK pressed](docs/screenshots/Veritcal-Remote-Button-Ok-Pressed.png) |
 
-### Button reference
+## Button reference
 
 | Physical key | Short press (Default) | Hold (Default) |
 |---|---|---|
@@ -89,7 +89,7 @@ When **Buttons** is set to **Swapped** in Settings, the short press and hold act
 
 You can also open the **Button Map** from the main menu to see this reference any time while using the app.
 
-### Screen orientation
+## Screen orientation
 
 | Vertical | Horizontal |
 |:--------:|:----------:|
