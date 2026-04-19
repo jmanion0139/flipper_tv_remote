@@ -26,7 +26,7 @@ Pre-built releases are available on the [Releases page](https://github.com/jmani
 
 Download the latest **flipper_tv_remote.fap** and copy it to **apps/Infrared/** on your Flipper's microSD card. The app will appear under **Applications → Infrared → TV Remote**.
 
-> Want to build from source? See [docs/build-instructions.md](docs/build-instructions.md).
+Want to build from source? See [docs/build-instructions.md](docs/build-instructions.md).
 
 ## How to use
 
@@ -59,7 +59,7 @@ Download the latest **flipper_tv_remote.fap** and copy it to **apps/Infrared/** 
 5. When all 12 buttons are done, the remote is saved automatically.
 6. Press **Back** at any time to stop early — buttons already recorded are saved.
 
-> Keep the original remote within about 30 cm of the Flipper's IR window with a clear line of sight for the best results.
+Keep the original remote within about 30 cm of the Flipper's IR window with a clear line of sight for the best results.
 
 ### Using your Flipper as a remote
 
